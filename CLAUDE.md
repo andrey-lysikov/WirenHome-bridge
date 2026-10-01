@@ -76,7 +76,7 @@
 
 - Локально (macOS): только разработка и тесты — Xcode (схема `WirenHome`), `swift build`, `swift test`, запуск против тестового контроллера.
 - Проект лежит в `~/Documents` (iCloud): из CLI собирать с `--scratch-path ~/Library/Caches/WirenHome-build`, иначе codesign тестов падает на xattr. Xcode (DerivedData) не затронут.
-- Сборка arm64 и `.deb` — только в GitHub Actions (`ubuntu-24.04-arm`, контейнер `swift:6.4-bookworm`); локально пакеты не собираем.
+- Сборка arm64 и `.deb` — только в GitHub Actions (раннер `ubuntu-26.04-arm`, сборка в контейнере `swift:6.4-bookworm` ради glibc 2.36); локально пакеты не собираем.
   - `build.yml` — тесты, сборка, `.deb` в артефакт запуска (только вручную; также вызывается из `release.yml`).
   - `release.yml` — релиз `v<версия>` с `.deb`, если версия выше последнего тега и в `changelog.md` есть непустой раздел `## <версия>`.
 - Версия — две цифры (`0.1`), единственный источник `Sources/WirenHome/Version.swift`; читает `packaging/version.sh`.

@@ -59,7 +59,12 @@ public final class HAPServer: Sendable {
             .childChannelOption(ChannelOptions.socketOption(.tcp_nodelay), value: 1)
         let initializer: @Sendable (any Channel) -> EventLoopFuture<NIOAsyncChannel<ByteBuffer, ByteBuffer>> = { child in
             child.eventLoop.makeCompletedFuture {
-                try NIOAsyncChannel<ByteBuffer, ByteBuffer>(wrappingChannelSynchronously: child)
+                do {
+                    return try NIOAsyncChannel<ByteBuffer, ByteBuffer>(wrappingChannelSynchronously: child)
+                } catch {
+                    Log.warning("HomeKit connection setup failed: \(error)")
+                    throw error
+                }
             }
         }
         do {
@@ -103,7 +108,12 @@ public final class HAPServer: Sendable {
                 }
             }
         } catch {
-            Log.debug("HomeKit connection from \(remote) ended: \(error)")
+            // Controllers drop idle sessions all the time, so only unexpected errors are warnings.
+            if error is HAPCryptoError || error is HTTPParseError {
+                Log.warning("HomeKit connection from \(remote) dropped: \(error)")
+            } else {
+                Log.debug("HomeKit connection from \(remote) ended: \(error)")
+            }
         }
     }
 }
