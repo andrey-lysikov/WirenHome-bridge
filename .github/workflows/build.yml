@@ -1,0 +1,42 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      artifact:
+        description: Name of the uploaded artifact with the .deb
+        value: ${{ jobs.build.outputs.artifact }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    container: swift:6.4-bookworm
+
+    outputs:
+      artifact: wb-homekit-${{ github.sha }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install packaging tools
+        run: apt-get update && apt-get install -y --no-install-recommends dpkg-dev
+
+      - name: Run the tests
+        run: swift test
+
+      - name: Build the binary
+        run: swift build -c release --static-swift-stdlib
+
+      - name: Build the package
+        run: |
+          VERSION="$(packaging/version.sh)"
+          packaging/build-deb.sh "$VERSION" "$(swift build -c release --static-swift-stdlib --show-bin-path)/wb-homekit" dist
+          dpkg-deb --info dist/*.deb
+
+      - name: Attach the package to the run
+        uses: actions/upload-artifact@v7
+        with:
+          name: wb-homekit-${{ github.sha }}
+          path: dist/*.deb
+          if-no-files-found: error

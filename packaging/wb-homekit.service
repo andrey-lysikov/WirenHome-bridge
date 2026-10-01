@@ -1,0 +1,13 @@
+[Unit]
+Description=Wiren Board to Apple Home bridge
+After=network-online.target mosquitto.service avahi-daemon.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/wb-homekit
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

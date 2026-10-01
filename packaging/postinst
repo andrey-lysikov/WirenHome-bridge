@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ]; then
+    systemctl daemon-reload
+    # Pick up the settings schema for the web UI.
+    systemctl try-restart wb-mqtt-confed.service || true
+    systemctl enable wb-homekit.service
+    systemctl restart wb-homekit.service
+fi

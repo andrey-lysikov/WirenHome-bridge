@@ -1,0 +1,156 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Sources/WirenHome/Version.swift
+      - changelog.md
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+      notes: ${{ steps.check.outputs.notes }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether this is a release
+        id: check
+        run: |
+          VERSION="$(packaging/version.sh)"
+          echo "Version in the project: $VERSION"
+
+          PREVIOUS="$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)"
+          echo "Newest tag: ${PREVIOUS:-(none)}"
+
+          NEWER=true
+          if [ -n "$PREVIOUS" ]; then
+            HIGHEST="$(printf '%s\n%s\n' "${PREVIOUS#v}" "$VERSION" | sort -V | tail -n 1)"
+            [ "$HIGHEST" = "$VERSION" ] && [ "${PREVIOUS#v}" != "$VERSION" ] || NEWER=false
+          fi
+
+          NOTES="$(awk -v v="$VERSION" '
+            /^##[[:space:]]/ { if (found) exit; found = ($2 == v && NF == 2); next }
+            found { lines[++n] = $0; if ($0 ~ /[^[:space:]]/) { if (!first) first = n; last = n } }
+            END { for (i = first; first && i <= last; i++) print lines[i] }
+          ' changelog.md)"
+
+          DESCRIBED=false
+          [ -n "$(echo "$NOTES" | tr -d '[:space:]')" ] && DESCRIBED=true
+          echo "Higher than the tag: $NEWER; described in changelog.md: $DESCRIBED"
+
+          if [ "$NEWER" != true ] || [ "$DESCRIBED" != true ]; then
+            if [ "$NEWER" != true ]; then
+              REASON="version $VERSION is not higher than $PREVIOUS"
+            else
+              REASON="changelog.md has no section for $VERSION"
+            fi
+            echo "No release: $REASON"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            printf '## No release\n\n%s\n' "$REASON" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          TAG="v$VERSION"
+          if [ -n "$PREVIOUS" ]; then
+            LINK="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/$PREVIOUS...$TAG"
+          else
+            LINK="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commits/$TAG"
+          fi
+
+          {
+            echo "release=true"
+            echo "version=$VERSION"
+            echo "tag=$TAG"
+            echo "notes<<RELEASE_NOTES_EOF"
+            echo "$NOTES"
+            echo
+            echo "**Full list of changes:** $LINK"
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: check
+    if: needs.check.outputs.release == 'true'
+    uses: ./.github/workflows/build.yml
+
+  release:
+    needs: [check, build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+          path: dist
+
+      - uses: actions/checkout@v7
+        with:
+          path: source
+
+      - name: Update the apt repository
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$APT_SIGNING_KEY" ]; then
+            echo "APT_SIGNING_KEY secret is not set" >&2
+            exit 1
+          fi
+          sudo apt-get update -qq && sudo apt-get install -y -qq apt-utils
+          echo "$APT_SIGNING_KEY" | gpg --batch --import
+          KEY="$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/ { print $10; exit }')"
+
+          # gh-pages holds the repository; created on the first release.
+          git clone --branch gh-pages "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY.git" site \
+            || { git init -b gh-pages site && git -C site remote add origin "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY.git"; }
+          cd site
+          mkdir -p pool/main dists/stable/main/binary-arm64
+          cp ../dist/*.deb pool/main/
+          # Keep the five newest packages so the Pages site stays small.
+          ls -1 pool/main/*.deb | sort -V | head -n -5 | xargs -r rm -f
+
+          apt-ftparchive packages pool > dists/stable/main/binary-arm64/Packages
+          gzip -9 -kf dists/stable/main/binary-arm64/Packages
+          apt-ftparchive \
+            -o APT::FTPArchive::Release::Origin=WirenHome \
+            -o APT::FTPArchive::Release::Label=WirenHome \
+            -o APT::FTPArchive::Release::Suite=stable \
+            -o APT::FTPArchive::Release::Codename=stable \
+            -o APT::FTPArchive::Release::Architectures=arm64 \
+            -o APT::FTPArchive::Release::Components=main \
+            release dists/stable > ../Release
+          mv ../Release dists/stable/Release
+          gpg --batch --yes --default-key "$KEY" --clearsign -o dists/stable/InRelease dists/stable/Release
+          gpg --batch --yes --default-key "$KEY" -abs -o dists/stable/Release.gpg dists/stable/Release
+          cp ../source/packaging/wb-homekit.gpg wb-homekit.gpg
+          touch .nojekyll
+
+          git add -A
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
+            commit -q -m "wb-homekit ${{ needs.check.outputs.version }}"
+          git push -q origin gh-pages
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ needs.check.outputs.notes }}
+        run: |
+          printf '%s\n' "$NOTES" > release-notes.md
+          gh release create "${{ needs.check.outputs.tag }}" dist/*.deb \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "${{ needs.check.outputs.tag }}" \
+            --notes-file release-notes.md \
+            --target "$GITHUB_SHA"
