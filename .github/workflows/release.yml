@@ -85,6 +85,8 @@ jobs:
     needs: check
     if: needs.check.outputs.release == 'true'
     uses: ./.github/workflows/build.yml
+    with:
+      strip: true
 
   release:
     needs: [check, build]

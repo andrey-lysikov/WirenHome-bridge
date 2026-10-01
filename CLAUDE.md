@@ -79,11 +79,11 @@
 - Проект лежит в `~/Documents` (iCloud): из CLI собирать с `--scratch-path ~/Library/Caches/WirenHome-build`, иначе codesign тестов падает на xattr. Xcode (DerivedData) не затронут.
 - Сборка arm64 и `.deb` — только в GitHub Actions (раннер `ubuntu-26.04-arm`, сборка в контейнере `swift:6.4-bookworm` ради glibc 2.36); локально пакеты не собираем.
   - `build.yml` — тесты, сборка, `.deb` в артефакт запуска (только вручную; также вызывается из `release.yml`).
-  - `release.yml` — релиз `v<версия>` с `.deb`, если версия выше последнего тега и в `changelog.md` есть непустой раздел `## <версия>`.
+  - `release.yml` вызывает `build.yml` со `strip: true` (бинарник без отладочной информации) — релиз `v<версия>` с `.deb`, если версия выше последнего тега и в `changelog.md` есть непустой раздел `## <версия>`.
 - Версия — две цифры (`0.1`), единственный источник `Sources/WirenHome/Version.swift`; читает `packaging/version.sh`.
 - Пакет собирает `packaging/build-deb.sh`; `Depends` на libc считает `dpkg-shlibdeps`. В пакете: `/etc/wb-homekit.conf` (conffile), схема confed `/usr/share/wb-mqtt-confed/schemas/wb-homekit.schema.json`, источник apt и ключ `packaging/wb-homekit.gpg` (без ключа пакет собирается, но без обновлений).
 - `release.yml` кладёт `.deb` в `gh-pages` (`pool/main`, `dists/stable`, последние 5 версий) и подписывает `InRelease`/`Release.gpg` ключом из `APT_SIGNING_KEY` (без пароля).
-- Linux arm64: glibc-сборка с `--build-system native --static-swift-stdlib` (движок Swift Build не добавляет статические зависимости Foundation — CoreFoundation, ICU) в Debian 12 Bookworm (glibc вперёд-совместима); musl не подходит из-за `dlopen`.
+- Linux arm64: glibc-сборка с `--static-swift-stdlib` в Debian 12 Bookworm (glibc вперёд-совместима); musl не подходит из-за `dlopen`.
 - Поставка: `.deb` с `/usr/bin/wb-homekit` и службой systemd `wb-homekit.service` (`After=mosquitto.service`, `Restart=always`); `Depends:` на `libavahi-compat-libdnssd1` и `libc6` по факту сборки.
 - Логи на контроллере: `journalctl -u wb-homekit -f`.
 - Обновления — свой apt-репозиторий на GitHub Pages (ветка `gh-pages`), индексы подписаны GPG (секрет `APT_SIGNING_KEY`); `release.yml` публикует туда `.deb`.
