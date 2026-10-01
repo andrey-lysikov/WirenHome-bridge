@@ -33,16 +33,15 @@ jobs:
             exit 1
           }
 
-      # lld resolves static archives in any order; the default gold misses CoreFoundation symbols.
+      # The native build system links Foundation's own static dependencies (CoreFoundation, ICU);
+      # the Swift Build backend leaves them out with --static-swift-stdlib.
       - name: Build the binary
-        run: |
-          command -v ld.lld lld ld.gold || true
-          swift build -c release --static-swift-stdlib -Xswiftc -use-ld=lld
+        run: swift build -c release --build-system native --static-swift-stdlib
 
       - name: Build the package
         run: |
           VERSION="$(packaging/version.sh)"
-          packaging/build-deb.sh "$VERSION" "$(swift build -c release --static-swift-stdlib -Xswiftc -use-ld=lld --show-bin-path)/wb-homekit" dist
+          packaging/build-deb.sh "$VERSION" "$(swift build -c release --build-system native --static-swift-stdlib --show-bin-path)/wb-homekit" dist
           dpkg-deb --info dist/*.deb
 
       - name: Attach the package to the run
