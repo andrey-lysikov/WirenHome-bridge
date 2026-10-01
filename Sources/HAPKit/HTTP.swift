@@ -1,7 +1,12 @@
 //  Copyright © AndreyLysikov
 //  SPDX-License-Identifier: Apache-2.0
 
+import Common
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 public struct HTTPRequest: Sendable, Equatable {
     public let method: String
@@ -31,14 +36,15 @@ struct HTTPParser: Sendable {
             return nil
         }
         let head = String(decoding: buffer[0..<headerEnd], as: UTF8.self)
-        var lines = head.components(separatedBy: "\r\n")
+        // "\r\n" is a single Character in Swift.
+        var lines = head.split(separator: "\r\n", omittingEmptySubsequences: false)
         let requestLine = lines.removeFirst().split(separator: " ")
         guard requestLine.count == 3, requestLine[2].hasPrefix("HTTP/1.") else { throw HTTPParseError.malformed }
 
         var headers: [String: String] = [:]
         for line in lines {
             guard let colon = line.firstIndex(of: ":") else { throw HTTPParseError.malformed }
-            headers[line[..<colon].lowercased()] = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            headers[line[..<colon].lowercased()] = line[line.index(after: colon)...].trimmed
         }
         let length = Int(headers["content-length"] ?? "0") ?? -1
         guard length >= 0, length <= Self.maxSize else { throw HTTPParseError.tooLarge }
@@ -61,7 +67,7 @@ struct HTTPParser: Sendable {
         var result: [String: String] = [:]
         for pair in query.split(separator: "&") {
             let parts = pair.split(separator: "=", maxSplits: 1)
-            result[String(parts[0])] = parts.count == 2 ? (String(parts[1]).removingPercentEncoding ?? String(parts[1])) : ""
+            result[String(parts[0])] = parts.count == 2 ? (parts[1].percentDecoded ?? String(parts[1])) : ""
         }
         return result
     }

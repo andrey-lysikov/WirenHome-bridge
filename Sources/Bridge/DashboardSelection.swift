@@ -1,6 +1,7 @@
 //  Copyright © AndreyLysikov
 //  SPDX-License-Identifier: Apache-2.0
 
+import Common
 import WBKit
 
 public enum DashboardSelection {
@@ -24,6 +25,6 @@ public enum DashboardSelection {
     }
 
     static func isUsable(_ id: String, _ name: String) -> Bool {
-        WBTopic.isValidName(id) && !name.trimmingCharacters(in: .whitespaces).isEmpty
+        WBTopic.isValidName(id) && !name.trimmed.isEmpty
     }
 }

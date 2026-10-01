@@ -20,7 +20,8 @@
   - `apple/swift-crypto` — Ed25519, X25519, ChaCha20-Poly1305, HKDF/SHA-512 (HAP).
   - `swift-server-community/mqtt-nio` 2.x — MQTT-клиент; его SwiftNIO (`NIOCore`, `NIOPosix`, подключён напрямую) используется и для TCP/HTTP-сервера HAP.
 - SRP-6a (Pair-Setup: 3072, g=5, SHA-512, `g` в M1 без паддинга) и `BigUInt` — своя реализация, обязательно с тестовыми векторами HAP.
-- JSON — `Codable` из Foundation. TLV8 — своя реализация с фрагментацией (>255 байт).
+- В коде моста только `FoundationEssentials` на Linux (`#if canImport(FoundationEssentials)`, на macOS — Foundation): без `Process`, `FileHandle`, `NSLock`, `String(format:)`, `components(separatedBy:)`, `trimmingCharacters`, `replacingOccurrences`. Замены — `Common` (`Subprocess` на `posix_spawn`, `trimmed`, `percentDecoded`, `hex`), `Mutex` из `Synchronization`, запись лога через `write(2)`. Тесты могут импортировать полную Foundation.
+- JSON — `Codable`. TLV8 — своя реализация с фрагментацией (>255 байт).
 - mDNS — API `dns_sd`: на macOS системный, на Linux `libavahi-compat-libdnssd` загружается через `dlopen("libdns_sd.so.1")` при старте. Нет библиотеки → понятная ошибка с `apt install libavahi-compat-libdnssd1` и выход с ненулевым кодом; не запущен avahi-daemon → аналогично.
 - Платформенные различия изолировать за протоколами, не размазывать `#if` по коду.
 - Foundation — только то, что есть в swift-corelibs-foundation.

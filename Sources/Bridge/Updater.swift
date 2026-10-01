@@ -2,7 +2,11 @@
 //  SPDX-License-Identifier: Apache-2.0
 
 import Common
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 public protocol Updater: Sendable {
     // Newest version offered by the bridge's apt source, nil when it cannot be checked.
@@ -23,61 +27,43 @@ public struct AptUpdater: Updater {
     }
 
     public func availableVersion() async -> String? {
-        let update = await Self.run("/usr/bin/apt-get", [
+        let update = await Subprocess.run("/usr/bin/apt-get", [
             "update", "-qq",
             "-o", "Dir::Etc::sourcelist=\(Self.sourceList)",
             "-o", "Dir::Etc::sourceparts=-",
             "-o", "APT::Get::List-Cleanup=0"
-        ])
+        ], environment: Self.environment)
         guard update.status == 0 else {
             Log.warning("apt-get update for wb-homekit failed: \(update.output)")
             return nil
         }
-        let policy = await Self.run("/usr/bin/apt-cache", ["policy", Self.package])
+        let policy = await Subprocess.run("/usr/bin/apt-cache", ["policy", Self.package], environment: Self.environment)
         return Self.candidate(in: policy.output)
     }
 
     // Runs in a separate systemd unit so the upgrade survives the restart of this service.
     public func startUpgrade() async -> Bool {
-        let result = await Self.run("/usr/bin/systemd-run", [
+        let result = await Subprocess.run("/usr/bin/systemd-run", [
             "--unit=wb-homekit-upgrade", "--collect",
             "/usr/bin/apt-get", "install", "-y", "--only-upgrade", Self.package
-        ])
+        ], environment: Self.environment)
         if result.status != 0 {
             Log.error("Cannot start upgrade: \(result.output)")
         }
         return result.status == 0
     }
 
+    static let environment = ["LANG=C", "PATH=/usr/sbin:/usr/bin:/sbin:/bin"]
+
     static func candidate(in policy: String) -> String? {
         for line in policy.split(separator: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let trimmed = line.trimmed
             if trimmed.hasPrefix("Candidate:") {
-                let value = trimmed.dropFirst("Candidate:".count).trimmingCharacters(in: .whitespaces)
+                let value = trimmed.dropFirst("Candidate:".count).trimmed
                 return value == "(none)" || value.isEmpty ? nil : value
             }
         }
         return nil
-    }
-
-    static func run(_ executable: String, _ arguments: [String]) async -> (status: Int32, output: String) {
-        await Task.detached {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            process.environment = ["LANG": "C", "PATH": "/usr/sbin:/usr/bin:/sbin:/bin"]
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
-            do {
-                try process.run()
-            } catch {
-                return (-1, "\(error)")
-            }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            return (process.terminationStatus, String(decoding: data, as: UTF8.self))
-        }.value
     }
 }
 

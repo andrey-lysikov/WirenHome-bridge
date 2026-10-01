@@ -1,6 +1,7 @@
 //  Copyright © AndreyLysikov
 //  SPDX-License-Identifier: Apache-2.0
 
+import Foundation
 import NIOCore
 import NIOPosix
 import Testing

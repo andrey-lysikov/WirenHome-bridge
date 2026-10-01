@@ -1,8 +1,13 @@
 //  Copyright © AndreyLysikov
 //  SPDX-License-Identifier: Apache-2.0
 
+import Common
 import Crypto
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 public struct HAPPairing: Sendable, Equatable, Codable {
     public let identifier: String
@@ -19,7 +24,7 @@ public struct HAPIdentity: Sendable, Equatable, Codable {
 
     public static func generate() -> HAPIdentity {
         var generator = SystemRandomNumberGenerator()
-        let id = (0..<6).map { _ in String(format: "%02X", UInt8.random(in: 0...255, using: &generator)) }.joined(separator: ":")
+        let id = (0..<6).map { _ in UInt8.random(in: 0...255, using: &generator).hex }.joined(separator: ":")
         return HAPIdentity(deviceID: id, privateKey: Curve25519.Signing.PrivateKey().rawRepresentation, pairings: [], configNumber: 1)
     }
 

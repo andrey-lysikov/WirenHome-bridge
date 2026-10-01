@@ -1,7 +1,11 @@
 //  Copyright © AndreyLysikov
 //  SPDX-License-Identifier: Apache-2.0
 
-import Foundation
+#if canImport(Glibc)
+import Glibc
+#elseif canImport(Darwin)
+import Darwin
+#endif
 
 public enum Log {
     public enum Level: Int, Sendable {
@@ -9,7 +13,7 @@ public enum Log {
     }
 
     // Debug output is enabled with WB_HOMEKIT_DEBUG=1.
-    static let minimum: Level = ProcessInfo.processInfo.environment["WB_HOMEKIT_DEBUG"] == "1" ? .debug : .info
+    static let minimum: Level = getenv("WB_HOMEKIT_DEBUG").map { String(cString: $0) } == "1" ? .debug : .info
 
     public static func debug(_ message: @autoclosure () -> String) { write(.debug, message) }
     public static func info(_ message: @autoclosure () -> String) { write(.info, message) }
@@ -20,6 +24,15 @@ public enum Log {
     private static func write(_ level: Level, _ message: () -> String) {
         guard level.rawValue >= minimum.rawValue else { return }
         let tag = ["debug", "info", "warning", "error"][level.rawValue]
-        FileHandle.standardError.write(Data("[\(tag)] \(message())\n".utf8))
+        var line = "[\(tag)] \(message())\n"
+        line.withUTF8 { bytes in
+            _ = systemWrite(2, bytes.baseAddress, bytes.count)
+        }
     }
 }
+
+#if canImport(Glibc)
+private let systemWrite = Glibc.write
+#else
+private let systemWrite = Darwin.write
+#endif

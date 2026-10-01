@@ -2,7 +2,11 @@
 //  SPDX-License-Identifier: Apache-2.0
 
 import Crypto
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 enum HAPCryptoError: Error {
     case authenticationFailed

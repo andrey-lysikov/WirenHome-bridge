@@ -1,7 +1,12 @@
 //  Copyright © AndreyLysikov
 //  SPDX-License-Identifier: Apache-2.0
 
+import Common
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import HAPKit
 import WBKit
 
@@ -77,7 +82,7 @@ enum Source: Sendable, Equatable {
         guard let cell = cells.first, let raw = Self.value(cell, lookup) else {
             return .failure(.communicationFailure)
         }
-        let number = Double(raw.replacingOccurrences(of: ",", with: ".")) ?? 0
+        let number = Double(raw.replacing(",", with: ".")) ?? 0
         switch self {
         case .onOff:
             return .success(.bool(number != 0))
@@ -170,7 +175,7 @@ enum Source: Sendable, Equatable {
     }
 
     static func rgb(_ raw: String) -> [Int]? {
-        let parts = raw.split(separator: ";").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        let parts = raw.split(separator: ";").compactMap { Int($0.trimmed) }
         return parts.count == 3 ? parts.map { $0.clamped(0, 255) } : nil
     }
 

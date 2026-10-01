@@ -7,7 +7,7 @@ import Darwin
 import Glibc
 #endif
 import Common
-import Foundation
+import Synchronization
 
 public enum DiscoveryError: Error, Equatable, CustomStringConvertible {
     case libraryMissing(String)
@@ -65,8 +65,8 @@ public final class ServiceAdvertiser: @unchecked Sendable {
     private let register: RegisterFunction
     private let updateRecord: UpdateRecordFunction
     private let deallocate: DeallocateFunction
-    private let lock = NSLock()
-    private var service: OpaquePointer?
+    // The DNSServiceRef as a bit pattern, so the mutex holds a Sendable value.
+    private let service = Mutex<UInt?>(nil)
 
     // Fails early with an install hint when the library is absent.
     public init() throws {
@@ -89,7 +89,7 @@ public final class ServiceAdvertiser: @unchecked Sendable {
     }
 
     public var isRegistered: Bool {
-        lock.withLock { service != nil }
+        service.withLock { $0 != nil }
     }
 
     // Name conflicts are resolved by the daemon, which appends a number.
@@ -113,15 +113,15 @@ public final class ServiceAdvertiser: @unchecked Sendable {
         guard status == 0, let reference else {
             throw DiscoveryError.registrationFailed(status)
         }
-        lock.withLock { service = reference }
+        service.withLock { $0 = UInt(bitPattern: Int(bitPattern: UnsafeRawPointer(reference))) }
         Log.info("mDNS advertising \"\(name)\" \(type) on port \(port)")
     }
 
     public func update(txt: [(String, String)]) throws {
         let record = TXTRecord.encode(txt)
-        let status: Int32 = try lock.withLock {
-            guard let service else { throw DiscoveryError.notRegistered }
-            return record.withUnsafeBytes { updateRecord(service, nil, 0, UInt16(record.count), $0.baseAddress, 0) }
+        let status: Int32 = try service.withLock { raw in
+            guard let raw, let reference = OpaquePointer(bitPattern: raw) else { throw DiscoveryError.notRegistered }
+            return record.withUnsafeBytes { updateRecord(reference, nil, 0, UInt16(record.count), $0.baseAddress, 0) }
         }
         guard status == 0 else {
             throw DiscoveryError.registrationFailed(status)
@@ -129,11 +129,11 @@ public final class ServiceAdvertiser: @unchecked Sendable {
     }
 
     public func stop() {
-        lock.withLock {
-            if let service {
-                deallocate(service)
-                self.service = nil
+        service.withLock { raw in
+            if let current = raw, let reference = OpaquePointer(bitPattern: current) {
+                deallocate(reference)
             }
+            raw = nil
         }
     }
 }

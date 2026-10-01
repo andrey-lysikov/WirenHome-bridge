@@ -3,7 +3,11 @@
 
 import Common
 import Discovery
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import HAPKit
 import WBKit
 
@@ -55,7 +59,7 @@ public final class BridgeRunner: Sendable {
 
     // A stable, distinguishable name: "WirenHome 3A7F" from the device id tail.
     static func bridgeName(_ deviceID: String) -> String {
-        let tail = deviceID.replacingOccurrences(of: ":", with: "").suffix(4)
+        let tail = deviceID.filter { $0 != ":" }.suffix(4)
         return "WirenHome \(tail)"
     }
 

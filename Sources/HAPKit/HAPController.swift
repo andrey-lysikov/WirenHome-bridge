@@ -3,7 +3,11 @@
 
 import Common
 import Crypto
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 // Transport side of one controller connection.
 public protocol HAPConnectionSink: Sendable {

@@ -45,6 +45,6 @@ let package = Package(
         .testTarget(name: "HAPKitTests", dependencies: ["HAPKit", .product(name: "Crypto", package: "swift-crypto")]),
         .testTarget(name: "DiscoveryTests", dependencies: ["Discovery"]),
         .testTarget(name: "BridgeTests", dependencies: ["Bridge", "WBKit", "HAPKit"]),
-        .testTarget(name: "WirenHomeTests", dependencies: ["WirenHome"])
+        .testTarget(name: "WirenHomeTests", dependencies: ["WirenHome", "Common"])
     ]
 )

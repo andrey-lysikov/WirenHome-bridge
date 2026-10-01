@@ -4,7 +4,11 @@
 import Bridge
 import Common
 import Dispatch
-import Foundation
+#if canImport(Glibc)
+import Glibc
+#elseif canImport(Darwin)
+import Darwin
+#endif
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 if arguments == ["--version"] {
