@@ -26,7 +26,15 @@ jobs:
         # Temporary: debug log to diagnose the TCP test on Linux.
         env:
           WB_HOMEKIT_DEBUG: "1"
-        run: swift test
+        shell: bash
+        run: |
+          set -o pipefail
+          # On failure repeat the important lines at the very end, where they are easy to find.
+          swift test 2>&1 | tee test.log || {
+            echo "===== Failures and HomeKit server log ====="
+            grep -E "✘|error:|HomeKit (server|connection)|HAP #|IPv6|verify refused" test.log
+            exit 1
+          }
 
       - name: Build the binary
         run: swift build -c release --static-swift-stdlib
