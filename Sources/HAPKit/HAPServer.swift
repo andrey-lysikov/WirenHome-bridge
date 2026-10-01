@@ -35,9 +35,9 @@ public final class HAPServer: Sendable {
         self.controller = controller
     }
 
-    // Binds on all interfaces (IPv6 with IPv4 fallback) and serves until cancelled.
+    // IPv4 only for now; controllers reach the bridge over IPv4 in home networks.
     public func run(port: Int = 0, onListening: @Sendable (Int) async -> Void) async throws {
-        let channel = try await bind(host: "::", port: port)
+        let channel = try await bind(port: port)
         let actualPort = channel.channel.localAddress?.port ?? port
         Log.info("HomeKit server listening on port \(actualPort)")
         await onListening(actualPort)
@@ -53,26 +53,21 @@ public final class HAPServer: Sendable {
         }
     }
 
-    private func bind(host: String, port: Int) async throws -> NIOAsyncChannel<NIOAsyncChannel<ByteBuffer, ByteBuffer>, Never> {
-        let bootstrap = ServerBootstrap(group: MultiThreadedEventLoopGroup.singleton)
+    private func bind(port: Int) async throws -> NIOAsyncChannel<NIOAsyncChannel<ByteBuffer, ByteBuffer>, Never> {
+        try await ServerBootstrap(group: MultiThreadedEventLoopGroup.singleton)
             .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelOption(ChannelOptions.socketOption(.tcp_nodelay), value: 1)
-        let initializer: @Sendable (any Channel) -> EventLoopFuture<NIOAsyncChannel<ByteBuffer, ByteBuffer>> = { child in
-            child.eventLoop.makeCompletedFuture {
-                do {
-                    return try NIOAsyncChannel<ByteBuffer, ByteBuffer>(wrappingChannelSynchronously: child)
-                } catch {
-                    Log.warning("HomeKit connection setup failed: \(error)")
-                    throw error
+            .bind(host: "0.0.0.0", port: port) { child in
+                child.eventLoop.makeCompletedFuture {
+                    Log.debug("HomeKit accepted \(child.remoteAddress?.description ?? "unknown")")
+                    do {
+                        return try NIOAsyncChannel<ByteBuffer, ByteBuffer>(wrappingChannelSynchronously: child)
+                    } catch {
+                        Log.warning("HomeKit connection setup failed: \(error)")
+                        throw error
+                    }
                 }
             }
-        }
-        do {
-            return try await bootstrap.bind(host: host, port: port, childChannelInitializer: initializer)
-        } catch where host == "::" {
-            Log.warning("IPv6 bind failed (\(error)), using IPv4 only")
-            return try await bootstrap.bind(host: "0.0.0.0", port: port, childChannelInitializer: initializer)
-        }
     }
 
     private func serve(_ connection: NIOAsyncChannel<ByteBuffer, ByteBuffer>) async {
