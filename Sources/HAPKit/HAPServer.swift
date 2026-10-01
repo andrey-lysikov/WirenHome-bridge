@@ -56,7 +56,7 @@ public final class HAPServer: Sendable {
     private func bind(port: Int) async throws -> NIOAsyncChannel<NIOAsyncChannel<ByteBuffer, ByteBuffer>, Never> {
         try await ServerBootstrap(group: MultiThreadedEventLoopGroup.singleton)
             .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-            .childChannelOption(ChannelOptions.socketOption(.tcp_nodelay), value: 1)
+            .childChannelOption(ChannelOptions.tcpOption(.tcp_nodelay), value: 1)
             .bind(host: "0.0.0.0", port: port) { child in
                 child.eventLoop.makeCompletedFuture {
                     Log.debug("HomeKit accepted \(child.remoteAddress?.description ?? "unknown")")

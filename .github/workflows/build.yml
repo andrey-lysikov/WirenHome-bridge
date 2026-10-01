@@ -32,7 +32,7 @@ jobs:
           # On failure repeat the important lines at the very end, where they are easy to find.
           swift test 2>&1 | tee test.log || {
             echo "===== Failures and HomeKit server log ====="
-            grep -E "✘|error:|HomeKit (server|connection)|HAP #|IPv6|verify refused" test.log
+            grep -E "✘|error:|HomeKit (server|connection|accepted)|HAP #|verify refused" test.log
             exit 1
           }
 
