@@ -82,7 +82,7 @@
 - Версия — две цифры (`0.1`), единственный источник `Sources/WirenHome/Version.swift`; читает `packaging/version.sh`.
 - Пакет собирает `packaging/build-deb.sh`; `Depends` на libc считает `dpkg-shlibdeps`. В пакете: `/etc/wb-homekit.conf` (conffile), схема confed `/usr/share/wb-mqtt-confed/schemas/wb-homekit.schema.json`, источник apt и ключ `packaging/wb-homekit.gpg` (без ключа пакет собирается, но без обновлений).
 - `release.yml` кладёт `.deb` в `gh-pages` (`pool/main`, `dists/stable`, последние 5 версий) и подписывает `InRelease`/`Release.gpg` ключом из `APT_SIGNING_KEY` (без пароля).
-- Linux arm64: glibc-сборка с `--static-swift-stdlib` в Debian 12 Bookworm (glibc вперёд-совместима); musl не подходит из-за `dlopen`.
+- Linux arm64: glibc-сборка с `--static-swift-stdlib -Xswiftc -use-ld=lld` (gold не разрешает порядок статических Foundation/CoreFoundation) в Debian 12 Bookworm (glibc вперёд-совместима); musl не подходит из-за `dlopen`.
 - Поставка: `.deb` с `/usr/bin/wb-homekit` и службой systemd `wb-homekit.service` (`After=mosquitto.service`, `Restart=always`); `Depends:` на `libavahi-compat-libdnssd1` и `libc6` по факту сборки.
 - Логи на контроллере: `journalctl -u wb-homekit -f`.
 - Обновления — свой apt-репозиторий на GitHub Pages (ветка `gh-pages`), индексы подписаны GPG (секрет `APT_SIGNING_KEY`); `release.yml` публикует туда `.deb`.
