@@ -228,6 +228,7 @@ public enum HAPType {
         public static let fan = "B7"
         public static let thermostat = "4A"
         public static let windowCovering = "8C"
+        public static let garageDoorOpener = "41"
         public static let valve = "D0"
         public static let leakSensor = "83"
         public static let motionSensor = "85"
@@ -263,6 +264,9 @@ public enum HAPType {
         public static let currentPosition = "6D"
         public static let targetPosition = "7C"
         public static let positionState = "72"
+        public static let currentDoorState = "E"
+        public static let targetDoorState = "32"
+        public static let obstructionDetected = "24"
         public static let inUse = "D2"
         public static let valveType = "D5"
         public static let leakDetected = "70"
@@ -276,5 +280,10 @@ public enum HAPType {
         public static let programmableSwitchEvent = "73"
         public static let statusFault = "77"
         public static let configuredName = "E3"
+    }
+
+    // Eve app extensions; the Home app ignores them.
+    public enum Eve {
+        public static let power = "E863F10D-079E-48FF-8F27-9C2605A29F52"
     }
 }

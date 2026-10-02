@@ -4,7 +4,7 @@
 import WBKit
 
 public enum AccessoryRole: String, CaseIterable, Sendable, Codable {
-    case auto, light, outlet, fan, thermostat, blinds, valve, leak, motion, contact, info
+    case auto, light, outlet, fan, thermostat, blinds, valve, leak, motion, contact, info, gate
 
     // Codes are stored in the WB enum control; never renumber them.
     public var code: Int {
@@ -20,6 +20,7 @@ public enum AccessoryRole: String, CaseIterable, Sendable, Codable {
         case .motion: 8
         case .contact: 9
         case .info: 10
+        case .gate: 11
         }
     }
 
@@ -42,6 +43,7 @@ public enum AccessoryRole: String, CaseIterable, Sendable, Codable {
         case .motion: ["ru": "Движение", "en": "Motion"]
         case .contact: ["ru": "Открытие", "en": "Contact"]
         case .info: ["ru": "Инфо", "en": "Info"]
+        case .gate: ["ru": "Ворота", "en": "Gate"]
         }
     }
 }

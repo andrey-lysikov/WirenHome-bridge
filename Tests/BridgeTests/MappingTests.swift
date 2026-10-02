@@ -30,7 +30,36 @@ let controllerMessages: [(String, String)] = [
     ("/devices/wb-mdm3_223/controls/Channel 1/meta", #"{"max":100.0,"order":26,"readonly":false,"type":"range"}"#),
     ("/devices/wb-mdm3_223/controls/Channel 1", "40"),
     ("/devices/wb-mdm3_223/controls/Input 1 Single Press Counter/meta", #"{"order":3,"readonly":true,"type":"value"}"#),
-    ("/devices/wb-mdm3_223/controls/Input 1 Single Press Counter", "5")
+    ("/devices/wb-mdm3_223/controls/Input 1 Single Press Counter", "5"),
+    // wb-community scripts: floor heating (wb-mrwm2), Vakio OpenAir, flat emulator; DALI broadcast group.
+    ("/devices/Heating/controls/Tmin/meta", #"{"order":10,"readonly":false,"type":"temperature"}"#),
+    ("/devices/Heating/controls/Tmin", "26"),
+    ("/devices/Heating/controls/OnOff1/meta", #"{"order":1,"readonly":false,"type":"switch"}"#),
+    ("/devices/Heating/controls/OnOff1", "1"),
+    ("/devices/Heating/controls/IsOn1/meta", #"{"order":3,"readonly":true,"type":"switch"}"#),
+    ("/devices/Heating/controls/IsOn1", "0"),
+    ("/devices/Heating/controls/Temp1/meta", #"{"order":5,"readonly":true,"type":"temperature"}"#),
+    ("/devices/Heating/controls/Temp1", "27.5"),
+    ("/devices/Heating/controls/Pmax1/meta", #"{"order":11,"readonly":true,"type":"power"}"#),
+    ("/devices/Heating/controls/Pmax1", "1000"),
+    ("/devices/vakio/controls/Smart_Temp/meta", #"{"min":-20,"max":40,"readonly":false,"type":"range"}"#),
+    ("/devices/vakio/controls/Smart_Temp", "5"),
+    ("/devices/flat/controls/temperature/meta", #"{"readonly":true,"type":"value","units":"°C"}"#),
+    ("/devices/flat/controls/temperature", "21"),
+    ("/devices/dali/controls/wanted_level/meta", #"{"type":"range","readonly":false,"min":0,"max":100,"units":"%"}"#),
+    ("/devices/dali/controls/wanted_level", "60"),
+    ("/devices/dali/controls/go_to_scene/meta", #"{"type":"value","readonly":false,"enum":{"0":{"en":"0"},"1":{"en":"1"}}}"#),
+    ("/devices/dali/controls/go_to_scene", "0"),
+    // wb-community wb-mr6c-gate-controlling.
+    ("/devices/GateControlling/controls/GateOpen/meta", #"{"type":"pushbutton","readonly":false}"#),
+    ("/devices/GateControlling/controls/GateClose/meta", #"{"type":"pushbutton","readonly":false}"#),
+    ("/devices/GateControlling/controls/GateStop/meta", #"{"type":"pushbutton","readonly":false}"#),
+    ("/devices/GateControlling/controls/isOpen/meta", #"{"type":"switch","readonly":true}"#),
+    ("/devices/GateControlling/controls/isOpen", "0"),
+    ("/devices/GateControlling/controls/isClosed/meta", #"{"type":"switch","readonly":true}"#),
+    ("/devices/GateControlling/controls/isClosed", "1"),
+    ("/devices/GateControlling/controls/Alarm/meta", #"{"type":"alarm","readonly":true}"#),
+    ("/devices/GateControlling/controls/Alarm", "0")
 ]
 
 func controllerRegistry() -> DeviceRegistry {
@@ -99,6 +128,43 @@ func value(_ mapping: Mapping, _ aid: Int, _ type: String) -> HAPValue? {
     #expect(kind("wb-mr6cv3_46", "K1") == .toggle)
     #expect(kind("wb-mdm3_223", "Channel 1") == .range(min: 0, max: 100))
     #expect(kind("wb-mdm3_223", "Input 1 Single Press Counter") == .pressCounter(event: 0))
+    #expect(kind("Heating", "Tmin") == .setpoint(min: 10, max: 38))
+    #expect(kind("Heating", "Temp1") == .temperature)
+    #expect(kind("Heating", "Pmax1") == .power)
+    #expect(kind("flat", "temperature") == .temperature)
+    #expect(kind("vakio", "Smart_Temp") == .range(min: -20, max: 40))
+    #expect(kind("dali", "wanted_level") == .range(min: 0, max: 100))
+    #expect(kind("dali", "go_to_scene") == .unsupported)
+}
+
+@Test func floorHeatingBecomesThermostat() {
+    let floor = widget("floor", "Теплый пол", [
+        ("Heating/Tmin", "Температура"), ("Heating/OnOff1", "Включить"), ("Heating/Pmax1", "Мощность"),
+        ("Heating/Temp1", "Пол"), ("Heating/IsOn1", "Нагрев")
+    ])
+    let (mapping, _) = map([floor], roles: ["floor": .thermostat])
+    typealias C = HAPType.Characteristic
+    #expect(mapping.issues.isEmpty)
+    #expect(serviceTypes(mapping.accessories[1]) == [HAPType.Service.thermostat])
+    #expect(value(mapping, 2, C.currentTemperature) == .double(27.5))
+    #expect(value(mapping, 2, C.targetTemperature) == .double(26))
+    #expect(value(mapping, 2, C.currentHeatingCoolingState) == .int(0))
+    #expect(value(mapping, 2, C.targetHeatingCoolingState) == .int(1))
+    // Power rides on the thermostat service for the Eve app.
+    #expect(mapping.accessories[1].services[1].characteristics.last?.type == HAPType.Eve.power)
+    #expect(value(mapping, 2, HAPType.Eve.power) == .double(1000))
+}
+
+@Test func autoSkipsSettingsThatAreNotDimmers() {
+    let (mapping, _) = map([
+        widget("bedroom", "Свет спальня", [("dali/wanted_level", "Яркость"), ("dali/go_to_scene", "Сцена")]),
+        widget("vent", "Вентиляция", [("vakio/Smart_Temp", "Порог"), ("flat/temperature", "Температура")]),
+        widget("floor", "Теплый пол", [("Heating/Tmin", "Температура")])
+    ])
+    typealias S = HAPType.Service
+    #expect(serviceTypes(mapping.accessories[1]) == [S.lightbulb])
+    #expect(serviceTypes(mapping.accessories[2]) == [S.temperatureSensor])
+    #expect(serviceTypes(mapping.accessories[3]) == [S.temperatureSensor])
 }
 
 @Test func autoRoleMapsEachCell() throws {
@@ -188,4 +254,65 @@ func value(_ mapping: Mapping, _ aid: Int, _ type: String) -> HAPValue? {
     for rgb in [[255, 128, 0], [10, 200, 30], [0, 0, 255], [128, 128, 128]] {
         #expect(HSV(rgb: rgb).rgb == rgb)
     }
+}
+
+let gateWidget = widget("gate", "Ворота", [
+    ("GateControlling/GateOpen", "Открыть"), ("GateControlling/GateClose", "Закрыть"), ("GateControlling/GateStop", "Стоп"),
+    ("GateControlling/isOpen", "Открыты"), ("GateControlling/isClosed", "Закрыты"), ("GateControlling/Alarm", "Авария")
+])
+
+@Test func gateRoleUsesButtonsAndEndSensors() throws {
+    let (mapping, _) = map([gateWidget], roles: ["gate": .gate])
+    typealias C = HAPType.Characteristic
+    #expect(mapping.issues.isEmpty)
+    #expect(serviceTypes(mapping.accessories[1]) == [HAPType.Service.garageDoorOpener])
+    #expect(value(mapping, 2, C.currentDoorState) == .int(1))
+    #expect(value(mapping, 2, C.targetDoorState) == .int(1))
+    #expect(value(mapping, 2, C.obstructionDetected) == .bool(false))
+
+    let registry = controllerRegistry()
+    let lookup: ControlLookup = { registry.control(device: $0.device, control: $0.control) }
+    let target = try #require(mapping.sources.values.first { if case .doorTarget = $0 { true } else { false } })
+    #expect(try target.commands(for: .int(0), lookup).get().map(\.0.control) == ["GateOpen"])
+    #expect(try target.commands(for: .int(1), lookup).get().map(\.0.control) == ["GateClose"])
+}
+
+@Test func gateStatesWithoutNames() {
+    func cell(_ name: String) -> Cell { Cell(device: "g", control: name) }
+    var registry = DeviceRegistry()
+    func set(_ control: String, _ value: String) {
+        registry.apply(MQTTMessage(topic: "/devices/g/controls/\(control)/meta", payload: #"{"type":"switch"}"#))
+        registry.apply(MQTTMessage(topic: "/devices/g/controls/\(control)", payload: value))
+    }
+    let lookup: ControlLookup = { registry.control(device: $0.device, control: $0.control) }
+    set("opened", "0")
+    set("closed", "0")
+    set("relay", "1")
+
+    // Both end sensors off: moving towards a known target, otherwise stopped half-way.
+    let twoButtons = Gate(buttons: [cell("up"), cell("down")], toggle: nil, sensors: [cell("opened"), cell("closed")])
+    #expect(twoButtons.current(remembered: 0, lookup) == 2)
+    #expect(twoButtons.current(remembered: 1, lookup) == 3)
+    #expect(twoButtons.current(remembered: nil, lookup) == 4)
+
+    // One button is an impulse input; one sensor means "closed".
+    let impulse = Gate(buttons: [cell("pulse")], toggle: nil, sensors: [cell("closed")])
+    set("closed", "1")
+    #expect(impulse.commands(target: 1, lookup).isEmpty)
+    #expect(impulse.commands(target: 0, lookup).map(\.1) == ["1"])
+    set("closed", "0")
+    #expect(impulse.current(remembered: nil, lookup) == 0)
+
+    // A held relay is both the command and the target.
+    let relay = Gate(buttons: [], toggle: cell("relay"), sensors: [])
+    #expect(!relay.remembersTarget)
+    #expect(relay.target(remembered: 1, lookup) == 0)
+    #expect(relay.commands(target: 1, lookup).map(\.1) == ["0"])
+}
+
+@Test func gateNeedsSomethingToPress() {
+    let sensorsOnly = widget("gate", "Ворота", [("GateControlling/isOpen", "Открыты"), ("GateControlling/isClosed", "Закрыты")])
+    let (mapping, _) = map([sensorsOnly], roles: ["gate": .gate])
+    #expect(mapping.issues == [WidgetIssue(widget: "gate", issue: .roleMismatch(.gate, .needsGateControl))])
+    #expect(mapping.issues[0].issue.title["ru"] == "Ворота: нужна кнопка или выключатель, показан как «Авто»")
 }

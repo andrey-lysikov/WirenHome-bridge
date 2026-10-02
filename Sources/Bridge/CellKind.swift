@@ -10,9 +10,12 @@ enum CellKind: Sendable, Equatable {
     case pushbutton
     case range(min: Double, max: Double)
     case temperature
+    // A writable temperature, e.g. a heating threshold set by wb-rules.
+    case setpoint(min: Double, max: Double)
     case humidity
     case carbonDioxide
     case illuminance
+    case power
     case alarm
     case rgb
     case pressCounter(event: Int)
@@ -25,6 +28,11 @@ enum CellKind: Sendable, Equatable {
         let units = meta.units ?? ""
         // WB defaults: switches, ranges, buttons and rgb are writable, everything else is read-only.
         let writable = !(meta.readonly ?? !["switch", "range", "pushbutton", "rgb"].contains(type))
+        let setpoint = CellKind.setpoint(min: meta.min ?? 10, max: meta.max ?? 38)
+        // Enumerated values (DALI scenes, modes) are choices, not a scale HomeKit can slide.
+        if writable, meta.enumTitles?.isEmpty == false, ["range", "value"].contains(type) {
+            return .unsupported
+        }
 
         switch type {
         case "switch":
@@ -38,22 +46,25 @@ enum CellKind: Sendable, Equatable {
         case "alarm":
             return .alarm
         case "temperature":
-            return .temperature
+            return writable ? setpoint : .temperature
         case "rel_humidity":
             return .humidity
         case "concentration":
             return .carbonDioxide
         case "lux", "illuminance":
             return .illuminance
+        case "power":
+            return .power
         case "value":
             for (suffix, event) in [("Single Press Counter", 0), ("Double Press Counter", 1), ("Long Press Counter", 2)] where control.id.hasSuffix(suffix) {
                 return .pressCounter(event: event)
             }
             switch units {
-            case "deg C": return .temperature
+            case "deg C", "°C": return writable ? setpoint : .temperature
             case "%, RH": return .humidity
             case "ppm": return .carbonDioxide
             case "lx": return .illuminance
+            case "W": return .power
             default: return writable ? .range(min: meta.min ?? 0, max: meta.max ?? 100) : .number
             }
         case "text", "":
@@ -65,7 +76,7 @@ enum CellKind: Sendable, Equatable {
 
     var isWritable: Bool {
         switch self {
-        case .toggle, .pushbutton, .range, .rgb: true
+        case .toggle, .pushbutton, .range, .rgb, .setpoint: true
         default: false
         }
     }

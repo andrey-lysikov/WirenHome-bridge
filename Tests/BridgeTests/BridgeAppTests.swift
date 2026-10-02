@@ -191,9 +191,10 @@ struct LiveHarness {
     let h: Harness
     let homeKit = FakeHomeKit()
 
-    init(roles: [String: AccessoryRole] = [:]) async {
+    init(roles: [String: AccessoryRole] = [:], extra: [WebUIConfig.Widget] = []) async {
         let buttons = widget("buttons", "Кнопки", [("wb-mdm3_223/Input 1 Single Press Counter", "Кнопка")])
-        let config = WebUIConfig(dashboards: [.init(id: "home", name: "Дом", widgets: ["widget14", "dimmer", "buttons"])], widgets: [bathWidget, dimmerWidget, buttons])
+        let widgets = [bathWidget, dimmerWidget, buttons] + extra
+        let config = WebUIConfig(dashboards: [.init(id: "home", name: "Дом", widgets: widgets.map(\.id))], widgets: widgets)
         h = Harness(state: BridgeState(pinCode: "031-45-154", dashboards: ["home"], roles: roles))
         await h.webUI.set(config)
         await h.app.attach(homeKit, paired: true, bridge: HAPAccessory(aid: 1, services: []))
@@ -240,12 +241,55 @@ struct LiveHarness {
     #expect(event.except == nil)
 }
 
+@Test func wbEventsAreLimitedToOnePerSecond() async throws {
+    let live = await LiveHarness(roles: ["dimmer": .light])
+    let brightness = await live.id(3, HAPType.Characteristic.brightness)
+    func dim(_ value: String) async {
+        await live.h.app.handle(.message(MQTTMessage(topic: "/devices/wb-mdm3_223/controls/Channel 1", payload: value)))
+    }
+    await dim("50")
+    await dim("60")
+    await dim("70")
+    let sent = await live.homeKit.events.filter { $0.changes[brightness] != nil }
+    #expect(sent.map { $0.changes[brightness] } == [.int(50)])
+
+    try await Task.sleep(for: .milliseconds(1300))
+    let later = await live.homeKit.events.filter { $0.changes[brightness] != nil }
+    #expect(later.map { $0.changes[brightness] } == [.int(50), .int(70)])
+}
+
 @Test func pressCounterBecomesButtonEvent() async throws {
     let live = await LiveHarness()
     let button = await live.id(4, HAPType.Characteristic.programmableSwitchEvent)
     #expect(await live.homeKit.events.isEmpty)
     await live.h.app.handle(.message(MQTTMessage(topic: "/devices/wb-mdm3_223/controls/Input 1 Single Press Counter", payload: "6")))
     #expect(await live.homeKit.events.last?.changes == [button: .int(0)])
+}
+
+@Test func gateKeepsTargetUntilEndSensor() async throws {
+    let live = await LiveHarness(roles: ["gate": .gate], extra: [gateWidget])
+    typealias C = HAPType.Characteristic
+    let target = await live.id(5, C.targetDoorState)
+    let current = await live.id(5, C.currentDoorState)
+    func sensor(_ control: String, _ value: String) async {
+        await live.h.app.handle(.message(MQTTMessage(topic: "/devices/GateControlling/controls/\(control)", payload: value)))
+    }
+
+    #expect(await live.h.app.hapWrite(target, value: .int(0), origin: HAPConnectionID(value: 7)) == .success)
+    #expect(await live.h.broker.retained["/devices/GateControlling/controls/GateOpen/on"] == "1")
+    #expect(await live.h.app.hapRead(target) == .success(.int(0)))
+    #expect(await live.h.app.hapRead(current) == .success(.int(1)))
+
+    await sensor("isClosed", "0")
+    #expect(await live.h.app.hapRead(current) == .success(.int(2)))
+    await sensor("isOpen", "1")
+    #expect(await live.h.app.hapRead(current) == .success(.int(0)))
+
+    // Closed by a remote: the bridge follows the sensors.
+    await sensor("isOpen", "0")
+    await sensor("isClosed", "1")
+    #expect(await live.h.app.hapRead(target) == .success(.int(1)))
+    #expect(await live.h.app.hapRead(current) == .success(.int(1)))
 }
 
 @Test func roleChangeRebuildsAccessories() async {
@@ -255,63 +299,6 @@ struct LiveHarness {
     #expect(await live.homeKit.structureChanges == before + 1)
     let services = await live.h.app.hapAccessories().first { $0.aid == 2 }.map(serviceTypes)
     #expect(services == [HAPType.Service.lightbulb])
-}
-
-actor FakeUpdater: Updater {
-    var version: String?
-    private(set) var upgrades = 0
-
-    init(_ version: String?) {
-        self.version = version
-    }
-
-    func availableVersion() async -> String? {
-        version
-    }
-
-    func startUpgrade() async -> Bool {
-        upgrades += 1
-        return true
-    }
-}
-
-@Test func reportsAndInstallsUpdates() async {
-    let h = Harness()
-    let updater = FakeUpdater("0.2")
-    await h.app.attach(updater: updater)
-    await h.app.handle(.connected)
-    #expect(await h.broker.value("available_version") == "—")
-
-    await h.app.checkForUpdates()
-    #expect(await h.broker.value("available_version") == "0.2")
-    await h.command("update", "1")
-    #expect(await updater.upgrades == 1)
-    #expect(await h.broker.value("status") == "3")
-}
-
-@Test func ignoresUpdateWhenCurrent() async {
-    let h = Harness()
-    let updater = FakeUpdater("0.1")
-    await h.app.attach(updater: updater)
-    await h.app.handle(.connected)
-    await h.app.checkForUpdates()
-    #expect(await h.broker.value("available_version") == "—")
-    await h.command("update", "1")
-    #expect(await updater.upgrades == 0)
-}
-
-@Test func parsesAptPolicy() {
-    let policy = """
-    wb-homekit:
-      Installed: 0.1
-      Candidate: 0.3
-      Version table:
-    """
-    #expect(AptUpdater.candidate(in: policy) == "0.3")
-    #expect(AptUpdater.candidate(in: "wb-homekit:\n  Candidate: (none)") == nil)
-    #expect(AppVersionOrder.isNewer("0.10", than: "0.9"))
-    #expect(!AppVersionOrder.isNewer("0.1", than: "0.1"))
-    #expect(!AppVersionOrder.isNewer("0.9", than: "1.0"))
 }
 
 @Test func groupsRolesUnderTheirDashboard() async {

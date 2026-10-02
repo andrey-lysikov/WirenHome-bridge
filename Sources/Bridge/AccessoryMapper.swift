@@ -122,6 +122,9 @@ struct AccessoryMapper {
                 }
             }
         }
+        if let power = cells.first(where: { $0.kind == .power }) {
+            builder.addPower(power.cell)
+        }
         ids = builder.ids
         guard !builder.services.isEmpty else {
             mapping.issues.append(WidgetIssue(widget: widget.id, issue: .nothingToShow))
@@ -203,14 +206,15 @@ private struct Builder {
             ])
         case .pushbutton where !readOnly:
             service(S.switch, slot: slot, name: name, [Spec(type: C.on, format: .bool, permissions: .readWriteEvents, source: .momentary(cell))])
-        case .range(let min, let max) where !readOnly:
+        // Negative ranges are settings such as temperature thresholds, not dimmers.
+        case .range(let min, let max) where !readOnly && min >= 0:
             service(S.lightbulb, slot: slot, name: name, [
                 Spec(type: C.on, format: .bool, permissions: .readWriteEvents, source: .onFromRange(cell, max: max)),
                 brightness(.percent(cell, min: min, max: max))
             ])
         case .rgb where !readOnly:
             addRGBLight(cell, name: name, on: nil, brightness: nil, slot: slot)
-        case .temperature:
+        case .temperature, .setpoint:
             service(S.temperatureSensor, slot: slot, name: name, [temperature(cell)])
         case .humidity:
             service(S.humiditySensor, slot: slot, name: name, [
@@ -286,13 +290,19 @@ private struct Builder {
             service(S.fan, slot: slot, name: name, specs)
 
         case .thermostat:
-            guard let current = first({ $0 == .temperature || $0 == .number }) else { return .needsTemperature }
-            guard let target = range else { return .needsSetpoint }
+            guard let current = first({ $0 == .temperature }) ?? first({ $0 == .number }) else { return .needsTemperature }
+            let setpoint: (Cell, Double, Double)? = cells.lazy.compactMap { item in
+                if case .setpoint(let min, let max) = item.kind { return (item.cell, min, max) }
+                return nil
+            }.first
+            guard let target = setpoint ?? range else { return .needsSetpoint }
             let low = max(10, target.1), high = min(38, target.2)
             guard low < high else { return .setpointOutOfRange }
             let modes: [Int] = toggles.first == nil ? [1] : [0, 1]
+            // A read-only switch such as "circuit status" tells whether it is heating right now.
+            let heating = first { $0 == .state } ?? toggles.first
             service(S.thermostat, slot: slot, name: name, [
-                Spec(type: C.currentHeatingCoolingState, format: .uint8, permissions: .readEvents, source: .heating(toggles.first), min: 0, max: 2, step: 1, valid: modes),
+                Spec(type: C.currentHeatingCoolingState, format: .uint8, permissions: .readEvents, source: .heating(heating), min: 0, max: 2, step: 1, valid: heating == nil ? [1] : [0, 1]),
                 Spec(type: C.targetHeatingCoolingState, format: .uint8, permissions: .readWriteEvents, source: .heating(toggles.first), min: 0, max: 3, step: 1, valid: modes),
                 temperature(current),
                 Spec(type: C.targetTemperature, format: .float, permissions: .readWriteEvents, source: .setpoint(target.0, min: low, max: high), unit: "celsius", min: low, max: high, step: 0.5),
@@ -340,10 +350,31 @@ private struct Builder {
             guard let input = sensor ?? toggles.first else { return .needsInput }
             service(S.contactSensor, slot: slot, name: name, [contact(input)])
 
+        case .gate:
+            let buttons = cells.filter { $0.kind == .pushbutton }.map(\.cell)
+            guard !buttons.isEmpty || toggles.first != nil else { return .needsGateControl }
+            let gate = Gate(buttons: buttons, toggle: toggles.first, sensors: cells.filter { $0.kind == .state }.map(\.cell))
+            let obstruction: Source = first { $0 == .alarm }.map { .threshold($0, above: 0, asBool: true) } ?? .constant(.bool(false))
+            service(S.garageDoorOpener, slot: slot, name: name, [
+                Spec(type: C.currentDoorState, format: .uint8, permissions: .readEvents, source: .doorCurrent(gate), min: 0, max: 4, step: 1),
+                Spec(type: C.targetDoorState, format: .uint8, permissions: .readWriteEvents, source: .doorTarget(gate), min: 0, max: 1, step: 1),
+                Spec(type: C.obstructionDetected, format: .bool, permissions: .readEvents, source: obstruction)
+            ])
+
         case .auto, .info:
             break
         }
         return nil
+    }
+
+    // Power has no Home app characteristic; Eve shows it on the accessory's primary service.
+    mutating func addPower(_ cell: Cell) {
+        guard !services.isEmpty else { return }
+        let iid = ids.iid(widget, "c:power:\(cell.id)")
+        services[0].characteristics.append(HAPCharacteristic(
+            iid: iid, type: HAPType.Eve.power, format: .float, permissions: .readEvents, minValue: 0, maxValue: 100_000, minStep: 0.1
+        ))
+        sources[iid] = .number(cell, min: 0, max: 100_000)
     }
 
     mutating func addRGBLight(_ cell: Cell, name: String, on: Source?, brightness level: Source?, slot: String) {

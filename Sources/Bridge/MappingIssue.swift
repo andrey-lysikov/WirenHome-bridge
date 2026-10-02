@@ -14,6 +14,7 @@ enum RoleProblem: Sendable, Equatable {
     case needsPosition
     case needsInput
     case needsInputOrValue
+    case needsGateControl
 
     var title: Translations {
         switch self {
@@ -26,6 +27,7 @@ enum RoleProblem: Sendable, Equatable {
         case .needsPosition: ["ru": "нужно положение или два выключателя", "en": "needs a position or two switches"]
         case .needsInput: ["ru": "нужен вход", "en": "needs an input"]
         case .needsInputOrValue: ["ru": "нужен вход или значение", "en": "needs an input or a value"]
+        case .needsGateControl: ["ru": "нужна кнопка или выключатель", "en": "needs a button or a switch"]
         }
     }
 }

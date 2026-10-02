@@ -70,10 +70,6 @@ public final class BridgeRunner: Sendable {
             await homeKit.pairingChanged()
             await app.setPaired(paired)
         }
-        let updates = AptUpdater.isAvailable
-        if updates {
-            await app.attach(updater: AptUpdater())
-        }
 
         await withDiscardingTaskGroup { group in
             group.addTask {
@@ -93,16 +89,6 @@ public final class BridgeRunner: Sendable {
                         await self.rpc.failAll()
                     }
                     await self.app.handle(event)
-                }
-            }
-            if updates {
-                group.addTask {
-                    // First check shortly after start, then once a day.
-                    try? await Task.sleep(for: .seconds(60))
-                    while !Task.isCancelled {
-                        await self.app.checkForUpdates()
-                        try? await Task.sleep(for: .seconds(24 * 3600))
-                    }
                 }
             }
             group.addTask {

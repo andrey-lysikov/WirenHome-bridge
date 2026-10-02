@@ -3,5 +3,5 @@
 
 enum AppVersion {
     // Two numbers only; CI releases when it grows and changelog.md has a matching section.
-    static let current = "0.1"
+    static let current = "0.2"
 }

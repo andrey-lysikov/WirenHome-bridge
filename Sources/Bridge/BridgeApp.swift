@@ -19,9 +19,6 @@ public actor BridgeApp {
     private var staleRemoved = false
     private var homeKit: (any HomeKitControl)?
     private var paired = false
-    private var updater: (any Updater)?
-    private var update: PluginModel.UpdateInfo?
-    private var upgrading = false
 
     // HomeKit side: current accessory mapping and the values last reported to controllers.
     private var bridgeAccessory = HAPAccessory(aid: 1, services: [])
@@ -32,7 +29,15 @@ public actor BridgeApp {
     private var counters: [Cell: String] = [:]
     private var momentaryOn: Set<HAPCharacteristicID> = []
     private var blindsPosition: [Cell: Int] = [:]
+    // Where a button-driven gate was sent; cleared when a sensor reports an end position.
+    private var doorTargets: [Gate: Int] = [:]
     private var readyWaiters: [CheckedContinuation<Void, Never>] = []
+    // Events from WB go out at most once per second per characteristic; the latest held value follows.
+    static let eventInterval = Duration.seconds(1)
+    private let clock = ContinuousClock()
+    private var lastEventAt: [HAPCharacteristicID: ContinuousClock.Instant] = [:]
+    private var heldEvents: [HAPCharacteristicID: HAPValue] = [:]
+    private var flushScheduled = false
 
     public init(publisher: any MQTTPublisher, source: any WebUIConfigSource, store: StateStore, state: BridgeState, version: String) {
         self.publisher = publisher
@@ -54,21 +59,6 @@ public actor BridgeApp {
     func waitUntilReady() async {
         guard mapping == nil else { return }
         await withCheckedContinuation { readyWaiters.append($0) }
-    }
-
-    func attach(updater: any Updater) {
-        self.updater = updater
-        update = PluginModel.UpdateInfo()
-    }
-
-    func checkForUpdates() async {
-        guard let updater else { return }
-        let available = await updater.availableVersion()
-        update = PluginModel.UpdateInfo(available: available)
-        if let available, AppVersionOrder.isNewer(available, than: version) {
-            Log.info("Update available: \(available)")
-        }
-        await sync()
     }
 
     func setPaired(_ paired: Bool) async {
@@ -132,13 +122,6 @@ public actor BridgeApp {
     private func command(_ control: String, _ payload: String) async {
         let id = PluginModel.ID.self
         switch control {
-        case id.update:
-            guard let updater, let available = update?.available, AppVersionOrder.isNewer(available, than: version) else {
-                Log.info("Update requested, but no newer version is known")
-                break
-            }
-            Log.info("Updating to \(available) from the web UI")
-            upgrading = await updater.startUpgrade()
         case id.resetPairing:
             state.pinCode = PinCode.generate()
             Log.info("Pairing reset from the web UI, new setup code generated")
@@ -186,7 +169,7 @@ public actor BridgeApp {
         let device = PluginModel.device
         let desired = PluginModel.controls(
             state: state, config: config, status: status, accessories: max(0, (mapping?.accessories.count ?? 1) - 1),
-            issues: mapping?.issues ?? [], version: version, update: update
+            issues: mapping?.issues ?? [], version: version
         )
         let desiredIDs = Set(desired.map(\.id))
 
@@ -207,7 +190,6 @@ public actor BridgeApp {
     }
 
     private var status: PluginModel.Status {
-        if upgrading { return .updating }
         guard config != nil else { return .loading }
         return paired ? .running : .waitingForPairing
     }
@@ -292,6 +274,12 @@ public actor BridgeApp {
             }
             await valuesChanged([up], except: origin, writtenIDs: [id])
             return .success
+        case .doorTarget(let gate):
+            if gate.remembersTarget, let target = value.doubleValue {
+                doorTargets[gate] = Int(target)
+            }
+            await valuesChanged(gate.cells, except: origin, writtenIDs: [id])
+            return .success
         default:
             break
         }
@@ -312,6 +300,10 @@ public actor BridgeApp {
             return .success(.bool(momentaryOn.contains(id)))
         case .blinds(let up, _):
             return .success(.int(blindsPosition[up] ?? 100))
+        case .doorCurrent(let gate):
+            return .success(.int(gate.current(remembered: doorTargets[gate], lookup)))
+        case .doorTarget(let gate):
+            return .success(.int(gate.target(remembered: doorTargets[gate], lookup)))
         case .configuredName(let name):
             return .success(.string(state.configuredNames[Self.key(id)] ?? name))
         default:
@@ -398,7 +390,11 @@ public actor BridgeApp {
     private func registryChanged(_ change: WBChange) async {
         switch change {
         case .value(let device, let control, _):
-            await valuesChanged([Cell(device: device, control: control)], except: nil)
+            let cell = Cell(device: device, control: control)
+            for gate in doorTargets.keys where [gate.opened, gate.closed].contains(cell) && gate.position(lookup) != nil {
+                doorTargets[gate] = nil
+            }
+            await valuesChanged([cell], except: nil)
         case .meta(let device, let control), .removed(let device, let control):
             let cell = Cell(device: device, control: control)
             guard cellIndex[cell] != nil || isSelected(cell) else { return }
@@ -447,9 +443,52 @@ public actor BridgeApp {
             }
         }
         guard !changes.isEmpty else { return }
-        await homeKit?.notify(changes, except: origin)
+        let now = clock.now
+        // Writes from HomeKit answer at once; WB changes are rate-limited.
+        if origin == nil {
+            for (id, value) in changes {
+                if let last = lastEventAt[id], now - last < Self.eventInterval {
+                    heldEvents[id] = value
+                    changes[id] = nil
+                }
+            }
+            scheduleFlush()
+        }
+        for id in changes.keys {
+            lastEventAt[id] = now
+            heldEvents[id] = nil
+        }
+        if !changes.isEmpty {
+            await homeKit?.notify(changes, except: origin)
+        }
         if let origin, !originChanges.isEmpty {
             await homeKit?.notify(originChanges, only: origin)
         }
+    }
+
+    private func scheduleFlush() {
+        guard !heldEvents.isEmpty, !flushScheduled else { return }
+        flushScheduled = true
+        Task {
+            try? await Task.sleep(for: Self.eventInterval)
+            await self.flushHeldEvents()
+        }
+    }
+
+    private func flushHeldEvents() async {
+        flushScheduled = false
+        let now = clock.now
+        var due: [HAPCharacteristicID: HAPValue] = [:]
+        for (id, value) in heldEvents where lastEventAt[id].map({ now - $0 >= Self.eventInterval }) ?? true {
+            due[id] = value
+            lastEventAt[id] = now
+        }
+        for id in due.keys {
+            heldEvents[id] = nil
+        }
+        if !due.isEmpty {
+            await homeKit?.notify(due, except: nil)
+        }
+        scheduleFlush()
     }
 }

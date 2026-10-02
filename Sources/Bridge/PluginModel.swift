@@ -17,22 +17,20 @@ enum PluginModel {
         static let version = "version"
         static let warnings = "warnings"
         static let accessories = "accessories"
-        static let availableVersion = "available_version"
-        static let update = "update"
         static let dashboardPrefix = "dashboard_"
         static let rolePrefix = "role_"
     }
 
     // Shown through enum titles, so the WB UI picks the language of each browser.
+    // Codes are retained in MQTT; 3 was "updating" and stays unused.
     enum Status: Int, CaseIterable {
-        case loading, waitingForPairing, running, updating, stopped
+        case loading = 0, waitingForPairing = 1, running = 2, stopped = 4
 
         var title: Translations {
             switch self {
             case .loading: ["ru": "Загрузка", "en": "Loading"]
             case .waitingForPairing: ["ru": "Ожидание сопряжения", "en": "Waiting for pairing"]
             case .running: ["ru": "Работает", "en": "Running"]
-            case .updating: ["ru": "Обновление", "en": "Updating"]
             case .stopped: ["ru": "Остановлен", "en": "Stopped"]
             }
         }
@@ -51,14 +49,9 @@ enum PluginModel {
         }
     }
 
-    // Update controls exist only when the bridge was installed from its apt repository.
-    struct UpdateInfo: Equatable {
-        var available: String?
-    }
-
     static func controls(
         state: BridgeState, config: WebUIConfig?, status: Status, accessories: Int = 0, issues: [WidgetIssue] = [],
-        version: String, update: UpdateInfo? = nil
+        version: String
     ) -> [VirtualControl] {
         let statuses = Dictionary(uniqueKeysWithValues: Status.allCases.map { (String($0.rawValue), $0.title) })
         let general = issues.filter { $0.widget == nil }.map(\.issue)
@@ -95,20 +88,6 @@ enum PluginModel {
                 value: String(issues.count)
             )
         ]
-        if let update {
-            // A version number reads the same in every language; "—" means nothing newer is known.
-            let text = update.available.flatMap { AppVersionOrder.isNewer($0, than: version) ? $0 : nil } ?? "—"
-            controls.append(VirtualControl(
-                id: ID.availableVersion,
-                meta: WBControlMeta(type: "text", readonly: true, order: 7, title: ["ru": "Доступна версия", "en": "Available version"]),
-                value: text
-            ))
-            controls.append(VirtualControl(
-                id: ID.update,
-                meta: WBControlMeta(type: "pushbutton", readonly: false, order: 8, title: ["ru": "Обновить", "en": "Update"]),
-                value: nil
-            ))
-        }
         guard let config else { return controls }
 
         // Each dashboard switch is followed by the roles of its widgets, so the device page reads as groups.

@@ -41,6 +41,8 @@ enum Source: Sendable, Equatable {
     case momentary(Cell)
     case buttonEvent(Cell, event: Int)
     case blinds(up: Cell, down: Cell)
+    case doorCurrent(Gate)
+    case doorTarget(Gate)
 
     var cells: [Cell] {
         switch self {
@@ -51,6 +53,7 @@ enum Source: Sendable, Equatable {
             [c]
         case .heating(let c): c.map { [$0] } ?? []
         case .blinds(let up, let down): [up, down]
+        case .doorCurrent(let gate), .doorTarget(let gate): gate.cells
         }
     }
 
@@ -76,6 +79,10 @@ enum Source: Sendable, Equatable {
             return .success(.int(100))
         case .heating(nil):
             return .success(.int(1))
+        case .doorCurrent(let gate):
+            return .success(.int(gate.current(remembered: nil, lookup)))
+        case .doorTarget(let gate):
+            return .success(.int(gate.target(remembered: nil, lookup)))
         default:
             break
         }
@@ -163,6 +170,9 @@ enum Source: Sendable, Equatable {
         case .blinds(let up, let down):
             guard let target = value.doubleValue else { return .failure(.invalidValue) }
             return .success([(target >= 50 ? up : down, "1")])
+        case .doorTarget(let gate):
+            guard let target = value.doubleValue, target == 0 || target == 1 else { return .failure(.invalidValue) }
+            return .success(gate.commands(target: Int(target), lookup))
         default:
             return .failure(.readOnly)
         }
