@@ -1,19 +1,23 @@
 Architectures: arm64
 Codename: stable
 Components: main
-Date: Fri, 02 Oct 2026 19:34:32 +0000
+Date: Fri, 02 Oct 2026 19:55:45 +0000
 Label: WirenHome
 Origin: WirenHome
 Suite: stable
 MD5Sum:
- 04cb092445800ee36b95ed4941ff2db8              703 main/binary-arm64/Packages
- a79d947856ba08b66246cf07aaa5d116              505 main/binary-arm64/Packages.gz
+ e3fa0a5a60cba647293290d9b4ca8727             1080 Release
+ 75928c8ee8e9fa9d94983a6539423bb4              703 main/binary-arm64/Packages
+ 4a584db1ea8f12c2516d0022c9f9101d              505 main/binary-arm64/Packages.gz
 SHA1:
- 3f5829185c436c11df1ed6dd7a50a700cc40e425              703 main/binary-arm64/Packages
- ea867b6b35a1c47ff05c942c15834c198e7eb7f6              505 main/binary-arm64/Packages.gz
+ e3102d26444c04fe460c358326aacf770f6c3e86             1080 Release
+ 6c201b959ee1a79410940a791d93d77d9b5ed0c1              703 main/binary-arm64/Packages
+ 190e934be0cfc663971f5d5360fc4ad4f4404012              505 main/binary-arm64/Packages.gz
 SHA256:
- bc6820c4bcf60e4e429dc731bcf844b0ee79312b40868b833b2ff5786ad197cd              703 main/binary-arm64/Packages
- 32464459804827fdf094c43b658ca2ebe7d3ff5f05e359631b40fbd849d4b07a              505 main/binary-arm64/Packages.gz
+ e15167d2a2d37e8536ed56e16091e534360c708712cc6f5180c2d3281f242334             1080 Release
+ 2b2fee7f0d39a616481677cc4c8684612d5f9d52484770d0edbd638473e2416c              703 main/binary-arm64/Packages
+ 3e37b7428e2bb6135ee4abaad1b7014e8a4df05f6f94095ce911ddd31a7f1694              505 main/binary-arm64/Packages.gz
 SHA512:
- 4d2795ac0c607d04f7b1dd17c26bc935483caca11e5b4f3142ea013e32b31ee717ae92f3725c93072cc8bf51fac2618459ffa2294b53b5babd8e4301310ab22d              703 main/binary-arm64/Packages
- 9ca357379d55c97c1ef001eb15f855609e1213e201ac7077832d192333c27588caeea7ba4bd8b8c60859fbe7d66a5249874a1eaafcbdba598c8c48f6ac817b8a              505 main/binary-arm64/Packages.gz
+ d7102e386894fab638537e439dfcc8fc4d802412f4c8c216838bbb47e9d2e6de59121e07f089bd85a8b8e558dc73b3ba57b2aef30d63223faca33fd6b53ab668             1080 Release
+ 0ef6ff0f73359abc8edc9eabfaccc049b1fb2c355e744691f14243ca4f670523407b6da70725fbcb18de7e1f6ea7a7f970f233ebc3c943f1a3d7998634f9a7ca              703 main/binary-arm64/Packages
+ d43a3c2fbfc7e9348862a0a8a0a16599c0ef8c205eb9438f829503f689547a3b5acaa25d2988822a4205aa7ba84fe7406cb2d12f15d2c25bbd22f8ecf2c6ca0d              505 main/binary-arm64/Packages.gz
