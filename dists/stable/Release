@@ -1,23 +1,23 @@
 Architectures: arm64
 Codename: stable
 Components: main
-Date: Fri, 02 Oct 2026 19:55:45 +0000
+Date: Fri, 02 Oct 2026 20:18:15 +0000
 Label: WirenHome
 Origin: WirenHome
 Suite: stable
 MD5Sum:
- e3fa0a5a60cba647293290d9b4ca8727             1080 Release
- 75928c8ee8e9fa9d94983a6539423bb4              703 main/binary-arm64/Packages
- 4a584db1ea8f12c2516d0022c9f9101d              505 main/binary-arm64/Packages.gz
+ b864878003991143657ad791f4c2b174             1452 Release
+ 7ca3e6d22b9d1d5527e578400cb2ff93              703 main/binary-arm64/Packages
+ 379bf61c2ab4cc6201cc7426c1cc9f90              506 main/binary-arm64/Packages.gz
 SHA1:
- e3102d26444c04fe460c358326aacf770f6c3e86             1080 Release
- 6c201b959ee1a79410940a791d93d77d9b5ed0c1              703 main/binary-arm64/Packages
- 190e934be0cfc663971f5d5360fc4ad4f4404012              505 main/binary-arm64/Packages.gz
+ eb9cd1e61a6f17fc5051ffc874b129aba30153b5             1452 Release
+ 882e3438b97270e4a0d7c580acaee7e8ee16fd48              703 main/binary-arm64/Packages
+ c196df0a4ebb88f0cb4927a5d331416cd8339434              506 main/binary-arm64/Packages.gz
 SHA256:
- e15167d2a2d37e8536ed56e16091e534360c708712cc6f5180c2d3281f242334             1080 Release
- 2b2fee7f0d39a616481677cc4c8684612d5f9d52484770d0edbd638473e2416c              703 main/binary-arm64/Packages
- 3e37b7428e2bb6135ee4abaad1b7014e8a4df05f6f94095ce911ddd31a7f1694              505 main/binary-arm64/Packages.gz
+ d83901f679238d41b96c4d35f4cd537c6cf92c417ad812c6dbd629816fc05f87             1452 Release
+ a60806ecf2059866baf805437eeadc49d81685181374298389602fbc72c36492              703 main/binary-arm64/Packages
+ 1461d7e2c71e3c247e0f145fcfaeb82a7c406d4736056d7cd2b6aeb6159dc267              506 main/binary-arm64/Packages.gz
 SHA512:
- d7102e386894fab638537e439dfcc8fc4d802412f4c8c216838bbb47e9d2e6de59121e07f089bd85a8b8e558dc73b3ba57b2aef30d63223faca33fd6b53ab668             1080 Release
- 0ef6ff0f73359abc8edc9eabfaccc049b1fb2c355e744691f14243ca4f670523407b6da70725fbcb18de7e1f6ea7a7f970f233ebc3c943f1a3d7998634f9a7ca              703 main/binary-arm64/Packages
- d43a3c2fbfc7e9348862a0a8a0a16599c0ef8c205eb9438f829503f689547a3b5acaa25d2988822a4205aa7ba84fe7406cb2d12f15d2c25bbd22f8ecf2c6ca0d              505 main/binary-arm64/Packages.gz
+ 0c99c0d4e18372b1362737477a306d0ff39c4fa7583cdf568a87974b768bf44e612c1c0a7df0fe0cf291e86cbe297880a0d46331dcd6c8d0e6138aeb5fc450aa             1452 Release
+ bf4d9c57fddfd06c33de6747e306d446432ea6a86f65acd040521e05a655ae61666cb3a3b4dc0b733380516ad025468ce218c66f72c69a22635aed1bf16cf79a              703 main/binary-arm64/Packages
+ 4b0c9d328c528c8705057beebc4ba898121797317c0bd171f2e58d0a1d2fcec31914e844a97f49024d6d9b070e33fbccba1b5f38af4aaf074c563d7304638986              506 main/binary-arm64/Packages.gz

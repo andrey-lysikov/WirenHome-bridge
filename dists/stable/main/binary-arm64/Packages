@@ -6,11 +6,11 @@ Section: misc
 Maintainer: Andrey Lysikov
 Depends: libc6 (>= 2.35), libgcc-s1 (>= 3.3), libstdc++6 (>= 11), libavahi-compat-libdnssd1, avahi-daemon, qrencode
 Filename: pool/main/wirenhome-bridge_0.1_arm64.deb
-Size: 5159892
-MD5sum: 9e85b831db182e3a0f539c8ecd0c3ca1
-SHA1: fe9683f02e2ac65f3c07d8b9c71f63f532bf2e51
-SHA256: 165817acb7708017f02f3dde5ea038443a680151e1f52b84edca92135e883928
-SHA512: fc86350f385d7c03c5bb36d02499fa492d79dd9cb30eb423f2817c8073a7d9f0bbc01e3800d532139596538cceaa39d2f13ffc5d2203e3938b304d797173612a
+Size: 5160680
+MD5sum: 1ee77b8973afa4bcb0576f590f437bc2
+SHA1: e233565dc22a7d2dddc6f06cee3a8bbba241b44c
+SHA256: d615f9e7744c3b44e31de957ef94df3212ac1c85926da3cdb82cd163f1015d12
+SHA512: 1b90e2570238ee79e8e292db5005625276b94a6d3e163e032c49531a0ef1f3b3270fa350783ea9a7c304a80ad718d36d075713aa491203e2025e3272a289ae40
 Description: Wiren Board to Apple Home bridge
  Publishes Wiren Board dashboards as HomeKit accessories.
 
