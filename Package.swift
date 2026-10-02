@@ -14,7 +14,6 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/swift-server-community/mqtt-nio.git", from: "2.13.0"),
-        // Already pulled in by mqtt-nio; listed for direct NIOCore/NIOPosix imports.
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.80.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", "4.0.0"..<"6.0.0")
     ],

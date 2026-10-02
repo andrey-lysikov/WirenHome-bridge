@@ -23,10 +23,11 @@ On the controller, download the package from the [latest release](https://github
 ```bash
 apt install ./wb-homekit_*_arm64.deb
 ```
+Updates will be checked and installed through apt
 
 ## Setup
 
-1. Open the Wiren Board web UI → **Devices** → **Мост Apple HomeKit**.
+1. Open the Wiren Board web UI → **Devices** → **Bridge Apple HomeKit**.
 2. Turn on the dashboards you want in Apple Home.
 3. Under each dashboard pick a role for every widget (Auto fits most sensors and switches).
 4. In the Home app on iPhone: **+** → **Add Accessory** → **More options…** → **WirenHome XXXX**, then enter the setup code shown on the device page.
