@@ -123,6 +123,8 @@ jobs:
           cp ../dist/*.deb pool/main/
           # Keep the five newest packages so the Pages site stays small.
           ls -1 pool/main/*.deb | sort -V | head -n -5 | xargs -r rm -f
+          # Stable download link outside pool, so the index does not list it twice.
+          cp ../dist/*.deb wb-homekit_latest_arm64.deb
 
           apt-ftparchive packages pool > dists/stable/main/binary-arm64/Packages
           gzip -9 -kf dists/stable/main/binary-arm64/Packages
