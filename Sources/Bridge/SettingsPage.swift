@@ -252,6 +252,8 @@ enum SettingsSchema {
             "type": "object",
             "title": "Apple HomeKit bridge",
             "format": "categories",
+            // WB maps this to no_additional_properties: keys of deleted dashboards stay off the form.
+            "strictProps": true,
             "configFile": ["path": .string(configPath), "validate": false],
             "options": plain,
             "properties": .object(properties),
@@ -304,12 +306,13 @@ enum SettingsSchema {
     }
 
     // One line per widget role: name on the left, the role list on the right, warnings below.
+    // WB lays .form-group out as a column (.json-editor .form-group), so the row direction is set explicitly.
     static let roleRowStyle = """
         <style>
-        [data-schemapath*=".roles."] .form-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-bottom: 6px; }
-        [data-schemapath*=".roles."] .form-group > label { flex: 1 1 auto; margin: 0; }
-        [data-schemapath*=".roles."] .form-group > select { flex: 0 0 260px; width: 260px; max-width: 100%; }
-        [data-schemapath*=".roles."] .help-block { flex-basis: 100%; margin: 0; }
+        .json-editor [data-schemapath*=".roles."] .form-group { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; margin-bottom: 6px; }
+        .json-editor [data-schemapath*=".roles."] .form-group > label { flex: 1 1 0; min-width: 0; margin: 0; text-align: left; }
+        .json-editor [data-schemapath*=".roles."] .form-group > select { flex: 0 0 auto; width: 260px; max-width: 100%; }
+        .json-editor [data-schemapath*=".roles."] .help-block { flex: 1 1 100%; margin: 0; }
         </style>
         """
 

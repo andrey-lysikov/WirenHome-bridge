@@ -129,6 +129,7 @@ struct Harness {
     let schema = try json(await h.page.schema)
     #expect(schema["title"] as? String == "Apple HomeKit bridge")
     #expect(schema["format"] as? String == "categories")
+    #expect(schema["strictProps"] as? Bool == true)
     #expect(schema["required"] as? [String] == ["advanced", "pairing"])
     let sections = try #require(schema["properties"] as? [String: [String: Any]])
     #expect((sections["advanced"]?["properties"] as? [String: [String: Any]])?["mqtt"]?["required"] as? [String] == ["host", "password", "port", "username"])
@@ -191,6 +192,18 @@ struct Harness {
     #expect(state.dashboards == ["kitchen"])
     #expect(state.roles == ["light": .light])
     #expect(await homeKit.structureChanges > 0)
+}
+
+@Test func dropsSectionsOfDeletedDashboards() async throws {
+    let h = Harness()
+    await h.app.handle(.connected)
+    await h.app.refreshDashboards()
+    await h.page.save(#"{"pairing":{},"panel_kitchen":{"enabled":true},"panel_gone":{"enabled":true}}"#)
+    await h.app.checkSettings()
+    let file = try json(await h.page.settings)
+    #expect(file["panel_gone"] == nil)
+    #expect(file["panel_kitchen"] != nil)
+    #expect(await h.app.currentState.dashboards == ["kitchen"])
 }
 
 @Test func resetsPairingFromTheForm() async throws {

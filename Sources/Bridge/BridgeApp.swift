@@ -173,7 +173,16 @@ public actor BridgeApp {
         startupMQTT = file.mqtt
 
         var rewrite = data == nil
-        if let dashboards = file.dashboards {
+        if var dashboards = file.dashboards {
+            // Sections of dashboards deleted in the web UI are dropped from the file.
+            if let config {
+                let known = Set(DashboardSelection.dashboards(in: config).map(\.id))
+                if !Set(dashboards.keys).isSubset(of: known) {
+                    dashboards = dashboards.filter { known.contains($0.key) }
+                    file.dashboards = dashboards
+                    rewrite = true
+                }
+            }
             apply(dashboards)
         } else if let config {
             // A new or reset file (e.g. after a firmware reflash) gets the choices kept in state.json.
