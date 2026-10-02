@@ -1,0 +1,38 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Architectures: arm64
+Codename: stable
+Components: main
+Date: Fri, 02 Oct 2026 19:34:32 +0000
+Label: WirenHome
+Origin: WirenHome
+Suite: stable
+MD5Sum:
+ 04cb092445800ee36b95ed4941ff2db8              703 main/binary-arm64/Packages
+ a79d947856ba08b66246cf07aaa5d116              505 main/binary-arm64/Packages.gz
+SHA1:
+ 3f5829185c436c11df1ed6dd7a50a700cc40e425              703 main/binary-arm64/Packages
+ ea867b6b35a1c47ff05c942c15834c198e7eb7f6              505 main/binary-arm64/Packages.gz
+SHA256:
+ bc6820c4bcf60e4e429dc731bcf844b0ee79312b40868b833b2ff5786ad197cd              703 main/binary-arm64/Packages
+ 32464459804827fdf094c43b658ca2ebe7d3ff5f05e359631b40fbd849d4b07a              505 main/binary-arm64/Packages.gz
+SHA512:
+ 4d2795ac0c607d04f7b1dd17c26bc935483caca11e5b4f3142ea013e32b31ee717ae92f3725c93072cc8bf51fac2618459ffa2294b53b5babd8e4301310ab22d              703 main/binary-arm64/Packages
+ 9ca357379d55c97c1ef001eb15f855609e1213e201ac7077832d192333c27588caeea7ba4bd8b8c60859fbe7d66a5249874a1eaafcbdba598c8c48f6ac817b8a              505 main/binary-arm64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iQIzBAEBCgAdFiEEOs7mfmOoTH7rt29YpHHKHBYqleEFAmrAB0gACgkQpHHKHBYq
+leFMnw/+OTNhECS4Vt03jbD03oluqCFCuUVbcNa58QP3S/9x1IA935tbGAm9URHA
+W0794+VWHzqVNd+cHf5DtXfE3TrRKfQ6FdCrCqO3amGUdmIAkwhFYNJ2UNDvg6qG
+7V2hSQiUqs9siwQ6UT3ro0SiCL25l/RNs5pxV8qsMHWAGa6dAPGwURjvDMZG05tk
+MfZang6/j5I9z3j0bEXy/MgBru5QNYI9MKpGlv6vu5vfnuU686Eg4TTThkV7ZJqP
+1x2NQJVwb6YvJtYFu9Mv4RMhTTufdMAZQVrwko2t4ZqxkF5mHzwEv1Nq96k9ocOW
+UxyCdROvgOhCs0qd0pKPMfqyEKgHEZ52gTcoPt96KfJkxad9rXedHOJ3QYp/7rl+
+Xmb7JNRY9KTjE30Jr4n7lfyOv1ILm64woupgRUY6TNeBbfpkXhY59Ko2Y9ZnkDRp
+IT0vWz9jm4EdbHuElaodEhK+tjpDJxjAkEU2UQ01kPgGVGPWvor2CtppEA8PxwaT
+TjegqUh02fNc6tb8lEKdMl8w8O7FtkJMTnQMSnuJJUCDjUeSUPirOBywxGuoCKFQ
+Dnz83wRKOsj40CvOnwEjorxgJsHD2jPKX1Vb629TwV54dvsQIyFP3zhiDgjwl3ai
+FnT4lp5R0cPMIlfcNZlZpV2D29mbwSqszwd5Ju6P+1FLAhkD7UM=
+=655R
+-----END PGP SIGNATURE-----
