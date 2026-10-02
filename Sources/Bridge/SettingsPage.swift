@@ -246,18 +246,30 @@ enum SettingsSchema {
             ]
         }
 
-        let schema: JSON = [
+        // "categories" shows the sections as a list on the left, the chosen one on the right (like the DALI page).
+        let schema: JSON = requiringAll([
             "$schema": "http://json-schema.org/draft-04/schema#",
             "type": "object",
             "title": "Apple HomeKit bridge",
+            "format": "categories",
             "configFile": ["path": .string(configPath), "validate": false],
             "options": plain,
             "properties": .object(properties),
             "translations": ["en": .object(en.mapValues { .string($0) }), "ru": .object(ru.mapValues { .string($0) })]
-        ]
+        ])
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return (try? encoder.encode(schema)) ?? Data()
+    }
+
+    // json-editor drops optional fields missing from the file, so every field is marked required to stay visible.
+    static func requiringAll(_ value: JSON) -> JSON {
+        guard case .object(var object) = value else { return value }
+        if case .object(let properties)? = object["properties"] {
+            object["properties"] = .object(properties.mapValues(requiringAll))
+            object["required"] = .array(properties.keys.sorted().map { .string($0) })
+        }
+        return .object(object)
     }
 
     private static let plain: JSON = ["disable_collapse": true, "disable_edit_json": true, "disable_properties": true]
