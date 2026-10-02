@@ -28,6 +28,7 @@ public actor MQTTConnection: MQTTPublisher {
     private var outbound: NIOAsyncChannelOutboundWriter<ByteBuffer>?
     private var connected = false
     private var lastInbound = ContinuousClock.now
+    private var lastWrite: Task<Void, any Error>?
 
     static let keepAlive: UInt16 = 60
     // A larger packet than this is treated as a broken stream, not buffered forever.
@@ -53,7 +54,7 @@ public actor MQTTConnection: MQTTPublisher {
     public func publish(_ message: MQTTMessage) async {
         guard connected, let outbound else { return }
         do {
-            try await outbound.write(Self.buffer(.publish(topic: message.topic, payload: Array(message.payload.utf8), retain: message.retain, packetID: nil)))
+            try await send(.publish(topic: message.topic, payload: Array(message.payload.utf8), retain: message.retain, packetID: nil), outbound)
         } catch {
             Log.warning("MQTT publish to \(message.topic) failed: \(error)")
         }
@@ -61,7 +62,7 @@ public actor MQTTConnection: MQTTPublisher {
 
     public func disconnect() async {
         guard let outbound else { return }
-        try? await outbound.write(Self.buffer(.disconnect))
+        try? await send(.disconnect, outbound)
         outbound.finish()
     }
 
@@ -91,9 +92,10 @@ public actor MQTTConnection: MQTTPublisher {
     private func serve(_ inbound: NIOAsyncChannelInboundStream<ByteBuffer>, _ outbound: NIOAsyncChannelOutboundWriter<ByteBuffer>) async throws {
         self.outbound = outbound
         lastInbound = .now
-        try await outbound.write(Self.buffer(.connect(
+        lastWrite = nil
+        try await send(.connect(
             clientID: clientID, username: settings.username, password: settings.password, keepAlive: Self.keepAlive
-        )))
+        ), outbound)
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {
                 var pending: [UInt8] = []
@@ -122,7 +124,7 @@ public actor MQTTConnection: MQTTPublisher {
         switch packet {
         case .connack(let code):
             guard code == 0 else { throw MQTTPacketError.refused(code) }
-            try await outbound.write(Self.buffer(.subscribe(packetID: 1, filters: subscriptions)))
+            try await send(.subscribe(packetID: 1, filters: subscriptions), outbound)
         case .suback:
             // Retained messages follow the SUBACK, so the bridge hears "connected" before them.
             connected = true
@@ -130,7 +132,7 @@ public actor MQTTConnection: MQTTPublisher {
             continuation.yield(.connected)
         case .publish(let topic, let payload, let retain, let packetID):
             if let packetID {
-                try await outbound.write(Self.buffer(.puback(packetID: packetID)))
+                try await send(.puback(packetID: packetID), outbound)
             }
             continuation.yield(.message(MQTTMessage(topic: topic, payload: String(decoding: payload, as: UTF8.self), retain: retain)))
         default:
@@ -146,7 +148,18 @@ public actor MQTTConnection: MQTTPublisher {
         guard ContinuousClock.now - lastInbound < .seconds(Int(Self.keepAlive) * 3 / 2) else {
             throw MQTTConnectionError.timeout
         }
-        try await outbound.write(Self.buffer(.pingreq))
+        try await send(.pingreq, outbound)
+    }
+
+    // Packets go out in call order: two commands to one topic must not swap on the wire.
+    private func send(_ packet: MQTTPacket, _ outbound: NIOAsyncChannelOutboundWriter<ByteBuffer>) async throws {
+        let previous = lastWrite
+        let write = Task {
+            _ = try? await previous?.value
+            try await outbound.write(Self.buffer(packet))
+        }
+        lastWrite = write
+        try await write.value
     }
 
     static func buffer(_ packet: MQTTPacket) -> ByteBuffer {

@@ -12,8 +12,8 @@ public enum Log {
         case debug, info, warning, error
     }
 
-    // Debug output is enabled with WB_HOMEKIT_DEBUG=1.
-    static let minimum: Level = getenv("WB_HOMEKIT_DEBUG").map { String(cString: $0) } == "1" ? .debug : .info
+    // Debug output is enabled with WIRENHOME_BRIDGE_DEBUG=1.
+    static let minimum: Level = getenv("WIRENHOME_BRIDGE_DEBUG").map { String(cString: $0) } == "1" ? .debug : .info
 
     public static func debug(_ message: @autoclosure () -> String) { write(.debug, message) }
     public static func info(_ message: @autoclosure () -> String) { write(.info, message) }

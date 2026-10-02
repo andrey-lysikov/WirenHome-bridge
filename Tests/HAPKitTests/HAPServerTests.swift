@@ -110,3 +110,47 @@ func withClient<T: Sendable>(port: Int, _ body: @Sendable (TCPClient) async thro
         #expect(String(decoding: event.body, as: UTF8.self).contains(#""value":false"#))
     }
 }
+
+// Events and responses share one nonce counter: under load every frame must still decrypt in order.
+@Test func keepsFrameOrderWhenEventsMeetResponses() async throws {
+    let accessory = try Accessory()
+    let server = HAPServer(controller: accessory.controller)
+    let (portStream, portContinuation) = AsyncStream.makeStream(of: Int.self)
+    let serverTask = Task {
+        try await server.run(port: 0) { portContinuation.yield($0) }
+    }
+    defer { serverTask.cancel() }
+    var ports = portStream.makeAsyncIterator()
+    let port = try #require(await ports.next())
+
+    let iPhone = try await withClient(port: port) { client in
+        var controller = TestController()
+        _ = try await controller.pairSetup(code: "031-45-154") { try await client.request($0, $1, $2) }
+        return controller
+    }
+
+    try await withClient(port: port) { client in
+        client.secure(try await iPhone.pairVerify { try await client.request($0, $1, $2) })
+        let subscribe = try await client.request("PUT", "/characteristics", Array(#"{"characteristics":[{"aid":1,"iid":11,"ev":true}]}"#.utf8))
+        #expect(subscribe.status == 204)
+
+        let controller = accessory.controller
+        let events = Task {
+            for index in 0..<200 {
+                await controller.notify([HAPCharacteristicID(aid: 1, iid: 11): .bool(index.isMultiple(of: 2))])
+            }
+        }
+        // Requests go out while events stream in; any frame out of nonce order fails decryption here.
+        var received = 0
+        for _ in 0..<20 {
+            _ = try await client.request("GET", "/characteristics?id=1.11", [])
+            received += 1
+        }
+        await events.value
+        while received < 220 {
+            _ = try await client.response()
+            received += 1
+        }
+        #expect(received == 220)
+    }
+}

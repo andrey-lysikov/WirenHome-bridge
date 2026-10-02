@@ -296,10 +296,22 @@ enum SettingsSchema {
             if !general.isEmpty {
                 parts.append("<p>⚠ \(general.joined(separator: "; "))</p>")
             }
+            // Must not lead the HTML: DOMPurify drops a <style> that the parser would hoist into <head>.
+            parts.append(roleRowStyle)
             result[language] = parts.joined()
         }
         return result
     }
+
+    // One line per widget role: name on the left, the role list on the right, warnings below.
+    static let roleRowStyle = """
+        <style>
+        [data-schemapath*=".roles."] .form-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-bottom: 6px; }
+        [data-schemapath*=".roles."] .form-group > label { flex: 1 1 auto; margin: 0; }
+        [data-schemapath*=".roles."] .form-group > select { flex: 0 0 260px; width: 260px; max-width: 100%; }
+        [data-schemapath*=".roles."] .help-block { flex-basis: 100%; margin: 0; }
+        </style>
+        """
 
     static func escaped(_ text: String) -> String {
         var result = ""

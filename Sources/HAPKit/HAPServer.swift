@@ -9,18 +9,30 @@ import NIOPosix
 actor NIOConnectionSink: HAPConnectionSink {
     private let outbound: NIOAsyncChannelOutboundWriter<ByteBuffer>
     private var encryptor: FrameEncryptor?
+    private var lastWrite: Task<Void, Never>?
 
     init(outbound: NIOAsyncChannelOutboundWriter<ByteBuffer>) {
         self.outbound = outbound
     }
 
     func send(_ plaintext: [UInt8]) async {
-        let bytes = encryptor.map { _ in encryptor!.encrypt(plaintext) } ?? plaintext
-        try? await outbound.write(ByteBuffer(bytes: bytes))
+        await send(plaintext, thenEncryptWith: nil)
     }
 
-    func enableEncryption(_ keys: SessionKeys) {
-        encryptor = FrameEncryptor(key: keys.accessoryToController)
+    // Seals and queues without suspending, so events and responses keep nonce order, and nothing can
+    // slip out unencrypted between the last plaintext response of pair-verify and the switch to encryption.
+    func send(_ plaintext: [UInt8], thenEncryptWith keys: SessionKeys?) async {
+        let bytes = encryptor.map { _ in encryptor!.encrypt(plaintext) } ?? plaintext
+        if let keys {
+            encryptor = FrameEncryptor(key: keys.accessoryToController)
+        }
+        let previous = lastWrite
+        let write = Task { [outbound] in
+            await previous?.value
+            try? await outbound.write(ByteBuffer(bytes: bytes))
+        }
+        lastWrite = write
+        await write.value
     }
 
     func close() {
@@ -90,9 +102,8 @@ public final class HAPServer: Sendable {
                     parser.append(bytes)
                     while let request = try parser.next() {
                         let result = await controller.handle(request, from: id)
-                        await sink.send(result.response.serialized())
+                        await sink.send(result.response.serialized(), thenEncryptWith: result.sessionKeys)
                         if let keys = result.sessionKeys {
-                            await sink.enableEncryption(keys)
                             decryptor = FrameDecryptor(key: keys.controllerToAccessory)
                         }
                         if result.closeAfterResponse {

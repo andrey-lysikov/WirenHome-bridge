@@ -21,6 +21,7 @@ actor HomeKitService: HomeKitControl {
     private var setupID: String
     private var port: Int?
     private var stopped = false
+    private var advertisement = 0
 
     init(controller: HAPController, advertiser: ServiceAdvertiser, name: String, setupID: String) {
         self.controller = controller
@@ -77,7 +78,11 @@ actor HomeKitService: HomeKitControl {
 
     private func advertise() async {
         guard !stopped, let port else { return }
+        advertisement += 1
+        let current = advertisement
         let txt = await txtRecord()
+        // A newer call started while this one read the controller; its record is the fresh one.
+        guard current == advertisement, !stopped else { return }
         do {
             if advertiser.isRegistered {
                 try advertiser.update(txt: txt)

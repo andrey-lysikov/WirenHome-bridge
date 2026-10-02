@@ -32,6 +32,10 @@ public actor BridgeApp {
     private var startupMQTT: SettingsFile.MQTT?
     private var writtenSchema: Data?
     private var qrCache: (uri: String, svg: String?)?
+    // checkSettings is called by the poll and after dashboards load; one run at a time, a call meanwhile repeats it.
+    private var checkingSettings = false
+    private var settingsRecheck = false
+    private var schemaWrite: Task<Void, Never>?
 
     // HomeKit side: current accessory mapping and the values last reported to controllers.
     private var bridgeAccessory = HAPAccessory(aid: 1, services: [])
@@ -135,6 +139,22 @@ public actor BridgeApp {
     // Reads the settings file saved by the form; returns true when the MQTT settings changed and a restart is due.
     @discardableResult
     public func checkSettings() async -> Bool {
+        guard !checkingSettings else {
+            settingsRecheck = true
+            return false
+        }
+        checkingSettings = true
+        defer { checkingSettings = false }
+        repeat {
+            settingsRecheck = false
+            if await applySettingsFile() {
+                return true
+            }
+        } while settingsRecheck
+        return false
+    }
+
+    private func applySettingsFile() async -> Bool {
         let data = await page.readSettings()
         guard data == nil || data != appliedSettings else { return false }
         var file = SettingsFile()
@@ -229,7 +249,14 @@ public actor BridgeApp {
         let schema = SettingsSchema.build(info: info, config: config, configPath: configPath)
         guard schema != writtenSchema else { return }
         writtenSchema = schema
-        await page.writeSchema(schema)
+        // Writes queue up in build order, so an older schema never lands after a newer one.
+        let previous = schemaWrite
+        let write = Task { [page] in
+            await previous?.value
+            await page.writeSchema(schema)
+        }
+        schemaWrite = write
+        await write.value
     }
 
     private var status: BridgeStatus {
