@@ -9,7 +9,7 @@ Apple Home bridge for Wiren Board controllers.
 
 ## Features
 
-- Lives inside the Wiren Board web UI: the device "Apple HomeKit bridge" shows the status, the HomeKit setup code and the bridge settings, no separate app is needed
+- Lives inside the Wiren Board web UI: **Settings** → **Configuration files** → **Apple HomeKit bridge**
 - You choose which dashboards go to Apple Home; every widget becomes one accessory
 - Widget roles: Auto, Light, Outlet, Fan, Thermostat, Blinds, Valve, Leak, Motion, Contact, Gate and Info (read-only)
 - Save data in /mnt/data/wb-homekit
@@ -38,10 +38,9 @@ To update, run `apt update && apt upgrade`
 
 ## Setup
 
-1. Open the Wiren Board web UI → **Devices** → **Apple HomeKit bridge**.
-2. Turn on the dashboards you want in Apple Home.
-3. Under each dashboard pick a role for every widget (Auto fits most sensors and switches).
-4. In the Home app on iPhone: **+** → **Add Accessory** → **More options…** → **WirenHome XXXX**, then enter the setup code shown on the device page.
+1. Open the Wiren Board web UI → **Settings** → **Configuration files** → **Apple HomeKit bridge**.
+2. Tick the dashboards you want in Apple Home, pick a role for every widget (Auto fits most sensors and switches) and press **Save**.
+3. Scan the QR code on the page with the iPhone camera, or in the Home app tap **+** → **Add Accessory** → **More options…** → **WirenHome XXXX** and enter the setup code.
 
 Changes in dashboards are picked up automatically within about half a minute after you save them.
 

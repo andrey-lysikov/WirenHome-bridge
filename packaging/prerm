@@ -1,4 +1,6 @@
 #!/bin/sh
+#  Copyright © AndreyLysikov
+#  SPDX-License-Identifier: Apache-2.0
 set -e
 
 if [ "$1" = "remove" ]; then

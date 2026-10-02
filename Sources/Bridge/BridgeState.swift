@@ -6,9 +6,12 @@ import FoundationEssentials
 #else
 import Foundation
 #endif
+import HAPKit
 
 public struct BridgeState: Sendable, Equatable, Codable {
     public var pinCode: String
+    // Printed in the QR code next to the PIN; changes together with it.
+    public var setupID: String
     public var dashboards: Set<String>
     public var roles: [String: AccessoryRole]
     var ids = IDAllocator()
@@ -17,6 +20,7 @@ public struct BridgeState: Sendable, Equatable, Codable {
 
     public init(pinCode: String = PinCode.generate(), dashboards: Set<String> = [], roles: [String: AccessoryRole] = [:]) {
         self.pinCode = pinCode
+        setupID = HAPSetupPayload.generateSetupID()
         self.dashboards = dashboards
         self.roles = roles
     }
@@ -26,7 +30,7 @@ public struct BridgeState: Sendable, Equatable, Codable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case pinCode, dashboards, roles, ids, configuredNames, structure
+        case pinCode, setupID, dashboards, roles, ids, configuredNames, structure
     }
 
     // Missing or unknown values fall back to defaults so older files still load.
@@ -34,6 +38,8 @@ public struct BridgeState: Sendable, Equatable, Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let pin = try? c.decodeIfPresent(String.self, forKey: .pinCode)
         pinCode = pin.flatMap { PinCode.isValid($0) ? $0 : nil } ?? PinCode.generate()
+        let id = try? c.decodeIfPresent(String.self, forKey: .setupID)
+        setupID = id.flatMap { HAPSetupPayload.isValidSetupID($0) ? $0 : nil } ?? HAPSetupPayload.generateSetupID()
         dashboards = Set((try? c.decodeIfPresent([String].self, forKey: .dashboards)) ?? [])
         let rawRoles = (try? c.decodeIfPresent([String: String].self, forKey: .roles)) ?? [:]
         roles = rawRoles.compactMapValues(AccessoryRole.init(rawValue:))
@@ -45,6 +51,7 @@ public struct BridgeState: Sendable, Equatable, Codable {
     public func encode(to encoder: any Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(pinCode, forKey: .pinCode)
+        try c.encode(setupID, forKey: .setupID)
         try c.encode(dashboards.sorted(), forKey: .dashboards)
         try c.encode(roles.mapValues(\.rawValue), forKey: .roles)
         try c.encode(ids, forKey: .ids)

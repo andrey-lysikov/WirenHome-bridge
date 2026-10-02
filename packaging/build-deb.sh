@@ -16,12 +16,10 @@ ROOT="$(mktemp -d)/wb-homekit"
 install -D -m 0755 "$BINARY" "$ROOT/usr/bin/wb-homekit"
 install -D -m 0644 "$HERE/wb-homekit.service" "$ROOT/lib/systemd/system/wb-homekit.service"
 install -D -m 0644 "$HERE/../LICENSE" "$ROOT/usr/share/doc/wb-homekit/copyright"
-install -D -m 0644 "$HERE/wb-homekit.conf" "$ROOT/etc/wb-homekit.conf"
-install -D -m 0644 "$HERE/wb-homekit.schema.json" "$ROOT/usr/share/wb-mqtt-confed/schemas/wb-homekit.schema.json"
 for script in postinst prerm postrm; do
     install -D -m 0755 "$HERE/$script" "$ROOT/DEBIAN/$script"
 done
-echo "/etc/wb-homekit.conf" > "$ROOT/DEBIAN/conffiles"
+# /etc/wb-homekit.conf and the confed schema are written by the bridge itself (settings page in the web UI).
 
 # Updates come from the project's signed apt repository once its public key is in the tree.
 if [ -f "$HERE/wb-homekit.gpg" ]; then
@@ -45,7 +43,7 @@ Architecture: $ARCH
 Maintainer: Andrey Lysikov
 Section: misc
 Priority: optional
-Depends: $LIBDEPS, libavahi-compat-libdnssd1, avahi-daemon
+Depends: $LIBDEPS, libavahi-compat-libdnssd1, avahi-daemon, qrencode
 Description: Wiren Board to Apple Home bridge
  Publishes Wiren Board dashboards as HomeKit accessories.
 EOF

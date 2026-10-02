@@ -37,11 +37,14 @@ public final class BridgeRunner: Sendable {
             settings: settings.mqtt,
             clientID: Self.clientID,
             subscriptions: ["/devices/#"],
-            will: PluginModel.stoppedMessage
+            will: nil
         )
         // The web UI lives on the same host as the broker: localhost on the controller, its IP from Xcode.
         let dashboards = WebUIDashboardsSource(host: settings.mqtt.host)
-        app = BridgeApp(publisher: connection, source: dashboards, store: store, state: state, version: version)
+        app = BridgeApp(
+            publisher: connection, source: dashboards, store: store, state: state, version: version,
+            page: FileSettingsPage(settingsPath: settings.configPath), configPath: settings.configPath
+        )
 
         let storage = FileHAPStorage(url: store.directory.appendingPathComponent("homekit.json"))
         // Created here so the bridge name is known before the controller starts.
@@ -54,7 +57,7 @@ public final class BridgeRunner: Sendable {
             setupCode: state.pinCode
         )
         bridge = BridgeAccessories.bridge(name: Self.bridgeName(deviceID), serial: deviceID, version: version)
-        homeKit = HomeKitService(controller: controller, advertiser: advertiser, name: Self.bridgeName(deviceID))
+        homeKit = HomeKitService(controller: controller, advertiser: advertiser, name: Self.bridgeName(deviceID), setupID: state.setupID)
     }
 
     // A stable, distinguishable name: "WirenHome 3A7F" from the device id tail.
@@ -83,6 +86,16 @@ public final class BridgeRunner: Sendable {
             group.addTask {
                 for await event in self.connection.events {
                     await self.app.handle(event)
+                }
+            }
+            group.addTask {
+                // The settings page saves /etc/wb-homekit.conf; pick changes up within seconds.
+                while !Task.isCancelled {
+                    if await self.app.checkSettings() {
+                        await self.stop()
+                        Terminate.now(0)
+                    }
+                    try? await Task.sleep(for: .seconds(2))
                 }
             }
             group.addTask {

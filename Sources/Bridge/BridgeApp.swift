@@ -2,23 +2,39 @@
 //  SPDX-License-Identifier: Apache-2.0
 
 import Common
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 import HAPKit
 import WBKit
 
 public actor BridgeApp {
+    // The device page of versions before 0.3; its retained topics are cleared on sight.
+    static let legacyDevicePrefix = "/devices/wb-homekit/"
+
     private let publisher: any MQTTPublisher
     private let source: any WebUIConfigSource
     private let store: StateStore
+    private let page: any SettingsPageStore
+    private let qr: any QRRenderer
+    private let configPath: String
     private let version: String
     private var state: BridgeState
     private var registry = DeviceRegistry()
     private var config: WebUIConfig?
     private var pendingConfig: WebUIConfig?
     private var connected = false
-    private var published: [String: VirtualControl] = [:]
-    private var staleRemoved = false
     private var homeKit: (any HomeKitControl)?
     private var paired = false
+    private var stopped = false
+
+    // Settings page: the file content last applied, the MQTT part it started with, the schema last written.
+    private var appliedSettings: Data?
+    private var startupMQTT: SettingsFile.MQTT?
+    private var writtenSchema: Data?
+    private var qrCache: (uri: String, svg: String?)?
 
     // HomeKit side: current accessory mapping and the values last reported to controllers.
     private var bridgeAccessory = HAPAccessory(aid: 1, services: [])
@@ -39,12 +55,18 @@ public actor BridgeApp {
     private var heldEvents: [HAPCharacteristicID: HAPValue] = [:]
     private var flushScheduled = false
 
-    public init(publisher: any MQTTPublisher, source: any WebUIConfigSource, store: StateStore, state: BridgeState, version: String) {
+    public init(
+        publisher: any MQTTPublisher, source: any WebUIConfigSource, store: StateStore, state: BridgeState, version: String,
+        page: any SettingsPageStore, qr: any QRRenderer = QREncodeRenderer(), configPath: String = Settings.defaultConfigPath
+    ) {
         self.publisher = publisher
         self.source = source
         self.store = store
         self.state = state
         self.version = version
+        self.page = page
+        self.qr = qr
+        self.configPath = configPath
     }
 
     public var currentState: BridgeState { state }
@@ -63,24 +85,20 @@ public actor BridgeApp {
 
     func setPaired(_ paired: Bool) async {
         self.paired = paired
-        await sync()
+        await publishPage()
     }
 
     public func handle(_ event: MQTTEvent) async {
         switch event {
         case .connected:
             connected = true
-            published = [:]
-            staleRemoved = false
-            await publisher.publish(PluginModel.device.metaMessage())
-            await sync()
+            await publishPage()
         case .disconnected:
             connected = false
         case .message(let message):
-            // Retained commands are leftovers, not user actions.
-            if case .controlCommand(let device, let control) = WBTopic(message.topic), device == PluginModel.device.id {
-                if !message.retain {
-                    await command(control, message.payload)
+            if message.topic.hasPrefix(Self.legacyDevicePrefix) {
+                if message.retain, !message.payload.isEmpty {
+                    await publisher.publish(MQTTMessage(topic: message.topic, payload: "", retain: true))
                 }
             } else if let change = registry.apply(message) {
                 await registryChanged(change)
@@ -112,43 +130,85 @@ public actor BridgeApp {
         prune(for: fetched)
         Log.info("Dashboards loaded: \(fetched.dashboards.count) dashboards, \(fetched.widgets.count) widgets")
         await remap()
-        await sync()
+        await checkSettings()
+        await publishPage()
     }
 
     public func stop() async {
-        await publisher.publish(PluginModel.stoppedMessage)
+        stopped = true
+        await publishPage()
     }
 
-    private func command(_ control: String, _ payload: String) async {
-        let id = PluginModel.ID.self
-        switch control {
-        case id.resetPairing:
-            state.pinCode = PinCode.generate()
-            Log.info("Pairing reset from the web UI, new setup code generated")
-            save()
-            await homeKit?.reset(setupCode: state.pinCode)
-        case _ where control.hasPrefix(id.dashboardPrefix) && (payload == "0" || payload == "1"):
-            let dashboard = String(control.dropFirst(id.dashboardPrefix.count))
-            if payload == "1" {
-                state.dashboards.insert(dashboard)
-            } else {
-                state.dashboards.remove(dashboard)
+    // Reads the settings file saved by the form; returns true when the MQTT settings changed and a restart is due.
+    @discardableResult
+    public func checkSettings() async -> Bool {
+        let data = await page.readSettings()
+        guard data == nil || data != appliedSettings else { return false }
+        var file = SettingsFile()
+        if let data {
+            guard let decoded = try? JSONDecoder().decode(SettingsFile.self, from: data) else {
+                Log.warning("Cannot parse \(configPath), keeping the current settings")
+                appliedSettings = data
+                return false
             }
-        case _ where control.hasPrefix(id.rolePrefix):
-            let widget = String(control.dropFirst(id.rolePrefix.count))
-            if let role = Int(payload).flatMap(AccessoryRole.init(code:)) {
-                state.roles[widget] = role == .auto ? nil : role
-            }
-        default:
-            break
+            file = decoded
+        }
+        if let startupMQTT, startupMQTT != file.mqtt {
+            Log.info("MQTT settings changed in \(configPath), restarting")
+            return true
+        }
+        startupMQTT = file.mqtt
+
+        var rewrite = data == nil
+        if let dashboards = file.dashboards {
+            apply(dashboards)
+        } else if let config {
+            // First run after an upgrade: the choices made on the old device page move into the file.
+            file.dashboards = SettingsFile.dashboards(from: state, config: config)
+            rewrite = true
+        }
+        if file.resetPairing {
+            file.resetPairing = false
+            rewrite = true
+            await resetPairing()
+        }
+        if rewrite {
+            let encoded = file.encoded()
+            await page.writeSettings(encoded)
+            appliedSettings = encoded
+        } else {
+            appliedSettings = data
+        }
+        // Until the dashboards are known the file cannot be completed, so look at it again later.
+        if file.dashboards == nil {
+            appliedSettings = nil
         }
         save()
-        if control.hasPrefix(id.dashboardPrefix) || control.hasPrefix(id.rolePrefix) {
-            await remap()
+        await remap()
+        await publishPage()
+        return false
+    }
+
+    private func apply(_ dashboards: [String: SettingsFile.Dashboard]) {
+        state.dashboards = Set(dashboards.filter(\.value.enabled).keys)
+        // A widget shown on several dashboards takes its role from the first one, as listed on the form.
+        let owners = config.map { SettingsSchema.owners(in: $0).map(\.0.id) } ?? []
+        let order = owners + dashboards.keys.sorted().filter { !owners.contains($0) }
+        var roles: [String: AccessoryRole] = [:]
+        for dashboard in order.reversed() {
+            for (widget, code) in dashboards[dashboard]?.roles ?? [:] {
+                roles[widget] = AccessoryRole(code: code)
+            }
         }
-        // Echo the accepted value, otherwise the UI rolls the control back.
-        published.removeValue(forKey: control)
-        await sync()
+        state.roles = roles.filter { $0.value != .auto }
+    }
+
+    private func resetPairing() async {
+        state.pinCode = PinCode.generate()
+        state.setupID = HAPSetupPayload.generateSetupID()
+        Log.info("Pairing reset from the settings page, new setup code generated")
+        save()
+        await homeKit?.reset(setupCode: state.pinCode, setupID: state.setupID)
     }
 
     // Forget dashboards and roles that no longer exist in the web UI config.
@@ -164,32 +224,23 @@ public actor BridgeApp {
         }
     }
 
-    private func sync() async {
-        guard connected else { return }
-        let device = PluginModel.device
-        let desired = PluginModel.controls(
-            state: state, config: config, status: status, accessories: max(0, (mapping?.accessories.count ?? 1) - 1),
-            issues: mapping?.issues ?? [], version: version
+    private func publishPage() async {
+        let uri = HAPSetupPayload.uri(setupCode: state.pinCode, setupID: state.setupID)
+        if qrCache?.uri != uri {
+            qrCache = (uri, await qr.svg(for: uri))
+        }
+        let info = SettingsPageInfo(
+            status: status, accessories: max(0, (mapping?.accessories.count ?? 1) - 1), issues: mapping?.issues ?? [],
+            version: version, pinCode: state.pinCode, setupURI: uri, qrSVG: qrCache?.svg
         )
-        let desiredIDs = Set(desired.map(\.id))
-
-        for control in desired where published[control.id] != control {
-            await publisher.publish(device.messages(for: control))
-        }
-        var removed = Set(published.keys).subtracting(desiredIDs)
-        // Controls left from a previous run are known only once the dashboards are loaded.
-        if config != nil, !staleRemoved {
-            staleRemoved = true
-            let leftovers = registry.device(device.id).map { Set($0.controls.keys) } ?? []
-            removed.formUnion(leftovers.subtracting(desiredIDs))
-        }
-        for control in removed.sorted() {
-            await publisher.publish(device.removalMessages(control))
-        }
-        published = Dictionary(uniqueKeysWithValues: desired.map { ($0.id, $0) })
+        let schema = SettingsSchema.build(info: info, config: config, configPath: configPath)
+        guard schema != writtenSchema else { return }
+        writtenSchema = schema
+        await page.writeSchema(schema)
     }
 
-    private var status: PluginModel.Status {
+    private var status: BridgeStatus {
+        if stopped { return .stopped }
         guard config != nil else { return .loading }
         return paired ? .running : .waitingForPairing
     }
@@ -401,7 +452,7 @@ public actor BridgeApp {
             let before = knownKinds[cell]
             if kind(of: cell) != before {
                 await remap()
-                await sync()
+                await publishPage()
             } else {
                 await valuesChanged([cell], except: nil)
             }

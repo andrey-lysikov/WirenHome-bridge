@@ -9,17 +9,11 @@ import WBKit
 
 actor FakeBroker: MQTTPublisher {
     private(set) var retained: [String: String] = [:]
+    private(set) var published: [MQTTMessage] = []
 
     func publish(_ message: MQTTMessage) async {
+        published.append(message)
         retained[message.topic] = message.payload.isEmpty ? nil : message.payload
-    }
-
-    func value(_ control: String) -> String? {
-        retained["/devices/wb-homekit/controls/\(control)"]
-    }
-
-    func meta(_ control: String) -> WBControlMeta? {
-        retained["/devices/wb-homekit/controls/\(control)/meta"].flatMap(WBControlMeta.decode)
     }
 }
 
@@ -40,7 +34,7 @@ actor FakeWebUI: WebUIConfigSource {
 }
 
 actor FakeHomeKit: HomeKitControl {
-    private(set) var resets: [String] = []
+    private(set) var resets: [(code: String, setupID: String)] = []
     private(set) var events: [(changes: [HAPCharacteristicID: HAPValue], except: HAPConnectionID?)] = []
     private(set) var directed: [[HAPCharacteristicID: HAPValue]] = []
     private(set) var structureChanges = 0
@@ -57,93 +51,187 @@ actor FakeHomeKit: HomeKitControl {
         directed.append(changes)
     }
 
-    func reset(setupCode: String) async {
-        resets.append(setupCode)
+    func reset(setupCode: String, setupID: String) async {
+        resets.append((setupCode, setupID))
+    }
+}
+
+// The confed side: the generated schema and the settings file the form saves.
+actor FakePage: SettingsPageStore {
+    private(set) var schema: Data?
+    var settings: Data?
+
+    func writeSchema(_ data: Data) async {
+        schema = data
+    }
+
+    func readSettings() async -> Data? {
+        settings
+    }
+
+    func writeSettings(_ data: Data) async {
+        settings = data
+    }
+
+    func save(_ json: String) {
+        settings = Data(json.utf8)
+    }
+
+    // Text of a description or title key in one language, as the form shows it.
+    func text(_ key: String, _ language: String) throws -> String? {
+        let translations = try json(schema)["translations"] as? [String: [String: String]]
+        return translations?[language]?[key]
+    }
+}
+
+func json(_ data: Data?) throws -> [String: Any] {
+    try JSONSerialization.jsonObject(with: #require(data)) as! [String: Any]
+}
+
+struct FakeQR: QRRenderer {
+    func svg(for text: String) async -> String? {
+        "<svg data-text=\"\(text)\"></svg>"
     }
 }
 
 struct Harness {
     let broker = FakeBroker()
     let webUI = FakeWebUI(sampleConfig)
+    let page = FakePage()
     let store = StateStore(directory: temporaryDirectory())
     let app: BridgeApp
 
     init(state: BridgeState = BridgeState(pinCode: "031-45-154")) {
-        app = BridgeApp(publisher: broker, source: webUI, store: store, state: state, version: "0.1")
+        app = BridgeApp(publisher: broker, source: webUI, store: store, state: state, version: "0.1", page: page, qr: FakeQR())
     }
 
-    func command(_ control: String, _ payload: String) async {
-        await app.handle(.message(MQTTMessage(topic: "/devices/wb-homekit/controls/\(control)/on", payload: payload, retain: false)))
+    func dashboards() async throws -> [String: Any] {
+        let properties = try json(await page.schema)["properties"] as? [String: Any]
+        let dashboards = properties?["dashboards"] as? [String: Any]
+        return dashboards?["properties"] as? [String: Any] ?? [:]
+    }
+
+    func roles(_ dashboard: String) async throws -> [String: Any] {
+        let entry = try await dashboards()[dashboard] as? [String: Any]
+        let roles = (entry?["properties"] as? [String: Any])?["roles"] as? [String: Any]
+        return roles?["properties"] as? [String: Any] ?? [:]
     }
 }
 
-@Test func publishesBaseControlsOnConnect() async {
-    let h = Harness()
+@Test func publishesTheSettingsPageOnConnect() async throws {
+    var state = BridgeState(pinCode: "031-45-154")
+    state.setupID = "WB12"
+    let h = Harness(state: state)
     await h.app.handle(.connected)
 
-    #expect(await h.broker.retained["/devices/wb-homekit/meta"]?.contains("Мост Apple HomeKit") == true)
-    #expect(await h.broker.value("pincode") == "031-45-154")
-    #expect(await h.broker.meta("enabled") == nil)
-    #expect(await h.broker.value("version") == "0.1")
-    #expect(await h.broker.value("status") == "0")
-    #expect(await h.broker.meta("status")?.enumTitles?["1"]?["en"] == "Waiting for pairing")
-    #expect(await h.broker.meta("reset_pairing")?.type == "pushbutton")
+    let schema = try json(await h.page.schema)
+    #expect(schema["title"] as? String == "Apple HomeKit bridge")
+    #expect((schema["configFile"] as? [String: Any])?["validate"] as? Bool == false)
+    let info = try #require(try await h.page.text("wb-homekit-info", "ru"))
+    #expect(info.contains("Загрузка"))
+    #expect(info.contains("031-45-154"))
+    let uri = HAPSetupPayload.uri(setupCode: "031-45-154", setupID: "WB12")
+    #expect(info.contains("<svg data-text=\"\(uri)\"></svg>"))
+    #expect(try await h.page.text("wb-homekit-info", "en")?.contains("Version") == false)
+    #expect(try await h.page.text("wb-homekit-info", "en")?.contains("App version:</b> 0.1") == true)
 }
 
-@Test func addsDashboardSwitchesAndRolesForSelected() async throws {
-    let h = Harness()
-    await h.app.handle(.connected)
-    await h.app.refreshDashboards()
-
-    #expect(await h.broker.meta("dashboard_kitchen")?.title?["ru"] == "Панель «Кухня»")
-    #expect(await h.broker.value("dashboard_kitchen") == "0")
-    #expect(await h.broker.meta("role_light") == nil)
-
-    await h.command("dashboard_kitchen", "1")
-    #expect(await h.broker.value("dashboard_kitchen") == "1")
-    let role = try #require(await h.broker.meta("role_light"))
-    #expect(role.title?["ru"]?.hasPrefix("Кухня → Свет ⚠ нет устройства wb-mdm3_223/K1") == true)
-    #expect(role.order == 101)
-    #expect(role.enumTitles?["4"]?["ru"] == "Термостат")
-    #expect(await h.broker.value("role_light") == "0")
-    #expect(await h.broker.value("status") == "1")
-    #expect(try h.store.load()?.dashboards == ["kitchen"])
-
-    await h.command("dashboard_kitchen", "0")
-    #expect(await h.broker.meta("role_light") == nil)
-}
-
-@Test func storesRoleAndEchoesValue() async throws {
+@Test func listsDashboardsWithTheirWidgetRoles() async throws {
     let h = Harness(state: BridgeState(pinCode: "031-45-154", dashboards: ["kitchen"]))
     await h.app.handle(.connected)
     await h.app.refreshDashboards()
 
-    await h.command("role_light", "1")
-    #expect(await h.broker.value("role_light") == "1")
-    #expect(try h.store.load()?.roles == ["light": .light])
-
-    await h.command("role_light", "99")
-    #expect(await h.broker.value("role_light") == "1")
+    // kitchen: light, sensor; hall: door (sensor is already listed under kitchen); the blank one is skipped.
+    #expect(try await Set(h.dashboards().keys) == ["kitchen", "hall"])
+    #expect(try await Set(h.roles("kitchen").keys) == ["light", "sensor"])
+    #expect(try await Set(h.roles("hall").keys) == ["door"])
+    let light = try #require(try await h.roles("kitchen")["light"] as? [String: Any])
+    #expect(light["title"] as? String == "Свет")
+    #expect(light["description"] as? String == "warning-light")
+    #expect(try await h.page.text("warning-light", "ru") == "⚠ нет устройства wb-mdm3_223/K1; нет ячеек для HomeKit")
+    #expect(try await h.page.text("Thermostat", "ru") == "Термостат")
+    #expect(try await h.page.text("wb-homekit-info", "ru")?.contains("Ожидание сопряжения") == true)
 }
 
-@Test func resetsPairing() async {
+@Test func movesOldChoicesIntoTheSettingsFile() async throws {
+    let h = Harness(state: BridgeState(pinCode: "031-45-154", dashboards: ["kitchen"], roles: ["light": .light, "door": .contact]))
+    await h.app.handle(.connected)
+    await h.app.refreshDashboards()
+
+    let dashboards = try json(await h.page.settings)["dashboards"] as? [String: [String: Any]]
+    #expect(dashboards?["kitchen"]?["enabled"] as? Bool == true)
+    #expect(dashboards?["kitchen"]?["roles"] as? [String: Int] == ["light": AccessoryRole.light.code])
+    #expect(dashboards?["hall"]?["enabled"] as? Bool == false)
+    #expect(dashboards?["hall"]?["roles"] as? [String: Int] == ["door": AccessoryRole.contact.code])
+}
+
+@Test func appliesTheSavedForm() async throws {
+    let h = Harness()
+    let homeKit = FakeHomeKit()
+    await h.app.attach(homeKit, paired: true, bridge: HAPAccessory(aid: 1, services: []))
+    await h.app.handle(.connected)
+    await h.app.refreshDashboards()
+
+    await h.page.save(#"{"mqtt":{"host":"localhost","port":1883,"username":"","password":""},"reset_pairing":false,"dashboards":{"kitchen":{"enabled":true,"roles":{"light":1,"sensor":0}},"hall":{"enabled":false}}}"#)
+    #expect(await h.app.checkSettings() == false)
+    let state = try #require(try h.store.load())
+    #expect(state.dashboards == ["kitchen"])
+    #expect(state.roles == ["light": .light])
+    #expect(await homeKit.structureChanges > 0)
+}
+
+@Test func resetsPairingFromTheForm() async throws {
+    let h = Harness()
+    let homeKit = FakeHomeKit()
+    await h.app.attach(homeKit, paired: true, bridge: HAPAccessory(aid: 1, services: []))
+    await h.app.handle(.connected)
+    await h.app.refreshDashboards()
+    let setupID = await h.app.currentState.setupID
+
+    await h.page.save(#"{"reset_pairing":true,"dashboards":{}}"#)
+    await h.app.checkSettings()
+    let state = await h.app.currentState
+    #expect(state.pinCode != "031-45-154")
+    #expect(PinCode.isValid(state.pinCode))
+    #expect(await homeKit.resets.map(\.code) == [state.pinCode])
+    #expect(await homeKit.resets.map(\.setupID) == [state.setupID])
+    #expect(state.setupID != setupID || state.pinCode != "031-45-154")
+    #expect(try json(await h.page.settings)["reset_pairing"] as? Bool == false)
+    #expect(try await h.page.text("wb-homekit-info", "ru")?.contains(state.pinCode) == true)
+}
+
+@Test func restartsWhenTheBrokerSettingsChange() async {
     let h = Harness()
     await h.app.handle(.connected)
-
-    await h.command("reset_pairing", "1")
-    let pin = await h.broker.value("pincode")
-    #expect(pin != "031-45-154")
-    #expect(PinCode.isValid(pin ?? ""))
+    await h.page.save(#"{"mqtt":{"host":"localhost"},"dashboards":{}}"#)
+    #expect(await h.app.checkSettings() == false)
+    await h.page.save(#"{"mqtt":{"host":"localhost"},"dashboards":{"kitchen":{"enabled":true}}}"#)
+    #expect(await h.app.checkSettings() == false)
+    await h.page.save(#"{"mqtt":{"host":"192.168.1.10"},"dashboards":{}}"#)
+    #expect(await h.app.checkSettings() == true)
 }
 
-@Test func ignoresRetainedCommands() async {
+@Test func keepsSettingsWhenTheFileIsBroken() async throws {
+    let h = Harness(state: BridgeState(pinCode: "031-45-154", dashboards: ["kitchen"]))
+    await h.app.handle(.connected)
+    await h.page.save("{ not json")
+    #expect(await h.app.checkSettings() == false)
+    #expect(await h.app.currentState.dashboards == ["kitchen"])
+    #expect(await h.page.settings == Data("{ not json".utf8))
+}
+
+@Test func clearsTheOldDevicePage() async {
     let h = Harness()
     await h.app.handle(.connected)
-    await h.app.handle(.message(MQTTMessage(topic: "/devices/wb-homekit/controls/reset_pairing/on", payload: "1", retain: true)))
-    #expect(await h.broker.value("pincode") == "031-45-154")
+    await h.app.handle(.message(MQTTMessage(topic: "/devices/wb-homekit/controls/pincode", payload: "031-45-154")))
+    await h.app.handle(.message(MQTTMessage(topic: "/devices/wb-homekit/meta", payload: #"{"driver":"wb-homekit"}"#)))
+    // Our own removal echoes back empty and is left alone.
+    await h.app.handle(.message(MQTTMessage(topic: "/devices/wb-homekit/meta", payload: "")))
+    let cleared = await h.broker.published.filter { $0.payload.isEmpty && $0.retain }.map(\.topic)
+    #expect(cleared == ["/devices/wb-homekit/controls/pincode", "/devices/wb-homekit/meta"])
 }
 
-@Test func waitsForDashboardEditsToSettle() async {
+@Test func waitsForDashboardEditsToSettle() async throws {
     let h = Harness()
     await h.app.handle(.connected)
     await h.app.refreshDashboards()
@@ -151,40 +239,32 @@ struct Harness {
     let edited = WebUIConfig(dashboards: sampleConfig.dashboards + [.init(id: "garage", name: "Гараж", widgets: [])], widgets: sampleConfig.widgets)
     await h.webUI.set(edited)
     await h.app.refreshDashboards()
-    #expect(await h.broker.meta("dashboard_garage") == nil)
+    #expect(try await h.dashboards()["garage"] == nil)
 
     await h.app.refreshDashboards()
-    #expect(await h.broker.meta("dashboard_garage") != nil)
+    #expect(try await h.dashboards()["garage"] != nil)
 }
 
-@Test func removesLeftoverControlsAndForgetsDeletedDashboards() async throws {
+@Test func forgetsDeletedDashboards() async throws {
     let h = Harness(state: BridgeState(pinCode: "031-45-154", dashboards: ["kitchen", "gone"], roles: ["light": .light, "old": .fan]))
-    await h.app.handle(.message(MQTTMessage(topic: "/devices/wb-homekit/controls/dashboard_gone/meta", payload: #"{"type":"switch"}"#)))
-    await h.broker.publish(MQTTMessage(topic: "/devices/wb-homekit/controls/dashboard_gone/meta", payload: #"{"type":"switch"}"#))
-
     await h.app.handle(.connected)
-    #expect(await h.broker.meta("dashboard_gone") != nil)
-
     await h.app.refreshDashboards()
-    #expect(await h.broker.meta("dashboard_gone") == nil)
     let state = try #require(try h.store.load())
     #expect(state.dashboards == ["kitchen"])
     #expect(state.roles == ["light": .light])
 }
 
-@Test func drivesHomeKitFromPluginControls() async {
+@Test func reportsPairingOnTheSettingsPage() async throws {
     let h = Harness()
-    let homeKit = FakeHomeKit()
-    await h.app.attach(homeKit, paired: false, bridge: HAPAccessory(aid: 1, services: []))
+    await h.app.attach(FakeHomeKit(), paired: false, bridge: HAPAccessory(aid: 1, services: []))
     await h.app.handle(.connected)
     await h.app.refreshDashboards()
-
-    await h.command("reset_pairing", "1")
-    let pin = await h.broker.value("pincode")
-    #expect(await homeKit.resets == [pin ?? ""])
+    #expect(try await h.page.text("wb-homekit-info", "en")?.contains("Waiting for pairing") == true)
 
     await h.app.setPaired(true)
-    #expect(await h.broker.value("status") == "2")
+    #expect(try await h.page.text("wb-homekit-info", "en")?.contains("Running") == true)
+    await h.app.stop()
+    #expect(try await h.page.text("wb-homekit-info", "ru")?.contains("Остановлен") == true)
 }
 
 struct LiveHarness {
@@ -214,8 +294,7 @@ struct LiveHarness {
 
 @Test func homeKitWriteBecomesWBCommandAndEventForOthers() async throws {
     let live = await LiveHarness()
-    #expect(await live.h.broker.value("status") == "2")
-    #expect(await live.h.broker.value("accessories") == "3")
+    #expect(try await live.h.page.text("wb-homekit-info", "en")?.contains("Accessories:</b> 3") == true)
     let on = await live.id(2, HAPType.Characteristic.on)
     let origin = HAPConnectionID(value: 7)
 
@@ -292,33 +371,19 @@ struct LiveHarness {
     #expect(await live.h.app.hapRead(current) == .success(.int(1)))
 }
 
-@Test func roleChangeRebuildsAccessories() async {
+@Test func roleChangeRebuildsAccessories() async throws {
     let live = await LiveHarness()
     let before = await live.homeKit.structureChanges
-    await live.h.command("role_widget14", String(AccessoryRole.light.code))
+    await live.h.page.save(#"{"dashboards":{"home":{"enabled":true,"roles":{"widget14":\#(AccessoryRole.light.code)}}}}"#)
+    await live.h.app.checkSettings()
     #expect(await live.homeKit.structureChanges == before + 1)
     let services = await live.h.app.hapAccessories().first { $0.aid == 2 }.map(serviceTypes)
     #expect(services == [HAPType.Service.lightbulb])
 }
 
-@Test func groupsRolesUnderTheirDashboard() async {
-    let h = Harness(state: BridgeState(pinCode: "031-45-154", dashboards: ["kitchen", "hall"]))
-    await h.app.handle(.connected)
-    await h.app.refreshDashboards()
-
-    // kitchen: switch, light, sensor; hall: switch, door (sensor is already listed under kitchen).
-    #expect(await h.broker.meta("dashboard_kitchen")?.order == 100)
-    #expect(await h.broker.meta("role_light")?.order == 101)
-    #expect(await h.broker.meta("role_sensor")?.order == 102)
-    #expect(await h.broker.meta("dashboard_hall")?.order == 103)
-    #expect(await h.broker.meta("role_door")?.order == 104)
-    #expect(await h.broker.meta("role_door")?.title?["ru"] == "Холл → Дверь ⚠ нет ячеек для HomeKit")
-}
-
-@Test func translatesWarningsIntoRoleTitles() async {
+@Test func translatesWarningsNextToTheRole() async throws {
     let live = await LiveHarness(roles: ["widget14": .thermostat])
-    #expect(await live.h.broker.value("warnings") == "1")
-    let title = await live.h.broker.meta("role_widget14")?.title
-    #expect(title?["ru"] == "Дом → Свет в ванной ⚠ Термостат: нужен датчик температуры, показан как «Авто»")
-    #expect(title?["en"] == "Дом → Свет в ванной ⚠ Thermostat: needs a temperature sensor, shown as Auto")
+    #expect(try await live.h.page.text("wb-homekit-info", "ru")?.contains("Предупреждений:</b> 1") == true)
+    #expect(try await live.h.page.text("warning-widget14", "ru") == "⚠ Термостат: нужен датчик температуры, показан как «Авто»")
+    #expect(try await live.h.page.text("warning-widget14", "en") == "⚠ Thermostat: needs a temperature sensor, shown as Auto")
 }

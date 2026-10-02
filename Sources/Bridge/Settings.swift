@@ -38,6 +38,8 @@ public struct Settings: Sendable, Equatable {
 
     public var mqtt = MQTTSettings()
     public var dataDirectory = Settings.defaultDataDirectory
+    // Also the file behind the settings page in the web UI.
+    public var configPath = Settings.defaultConfigPath
 
     public init() {}
 
@@ -62,6 +64,7 @@ public struct Settings: Sendable, Equatable {
             }
         }
 
+        settings.configPath = configPath
         if FileManager.default.fileExists(atPath: configPath) {
             try settings.apply(file: configPath)
         } else if explicitConfig {
