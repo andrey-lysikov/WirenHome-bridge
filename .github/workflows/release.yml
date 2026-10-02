@@ -20,6 +20,7 @@ jobs:
       version: ${{ steps.check.outputs.version }}
       tag: ${{ steps.check.outputs.tag }}
       notes: ${{ steps.check.outputs.notes }}
+      rebuild: ${{ steps.check.outputs.rebuild }}
 
     steps:
       - uses: actions/checkout@v7
@@ -32,7 +33,8 @@ jobs:
           VERSION="$(packaging/version.sh)"
           echo "Version in the project: $VERSION"
 
-          PREVIOUS="$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)"
+          TAGS=($(git tag --list 'v[0-9]*' --sort=-v:refname))
+          PREVIOUS="${TAGS[0]:-}"
           echo "Newest tag: ${PREVIOUS:-(none)}"
 
           NEWER=true
@@ -41,14 +43,43 @@ jobs:
             [ "$HIGHEST" = "$VERSION" ] && [ "${PREVIOUS#v}" != "$VERSION" ] || NEWER=false
           fi
 
-          NOTES="$(awk -v v="$VERSION" '
-            /^##[[:space:]]/ { if (found) exit; found = ($2 == v && NF == 2); next }
-            found { lines[++n] = $0; if ($0 ~ /[^[:space:]]/) { if (!first) first = n; last = n } }
-            END { for (i = first; first && i <= last; i++) print lines[i] }
-          ' changelog.md)"
+          # A manual run on the released version rebuilds that release from the current commit.
+          REBUILD=false
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$PREVIOUS" = "v$VERSION" ]; then
+            REBUILD=true
+            NEWER=true
+            PREVIOUS="${TAGS[1]:-}"
+            echo "Manual run on $VERSION: rebuilding the release"
+          fi
+
+          # The "## <version>" section of changelog.md without surrounding blank lines.
+          SECTION=()
+          FOUND=false
+          while IFS= read -r LINE || [ -n "$LINE" ]; do
+            if [[ $LINE =~ ^##[[:space:]] ]]; then
+              $FOUND && break
+              read -r -a WORDS <<< "$LINE"
+              [ "${#WORDS[@]}" -eq 2 ] && [ "${WORDS[1]}" = "$VERSION" ] && FOUND=true
+              continue
+            fi
+            $FOUND && SECTION+=("$LINE")
+          done < changelog.md
+          FIRST=-1
+          LAST=-1
+          for I in "${!SECTION[@]}"; do
+            if [[ ${SECTION[I]} =~ [^[:space:]] ]]; then
+              [ "$FIRST" -lt 0 ] && FIRST=$I
+              LAST=$I
+            fi
+          done
+          NOTES=""
+          if [ "$FIRST" -ge 0 ]; then
+            printf -v NOTES '%s\n' "${SECTION[@]:FIRST:LAST-FIRST+1}"
+            NOTES="${NOTES%$'\n'}"
+          fi
 
           DESCRIBED=false
-          [ -n "$(echo "$NOTES" | tr -d '[:space:]')" ] && DESCRIBED=true
+          [[ $NOTES =~ [^[:space:]] ]] && DESCRIBED=true
           echo "Higher than the tag: $NEWER; described in changelog.md: $DESCRIBED"
 
           if [ "$NEWER" != true ] || [ "$DESCRIBED" != true ]; then
@@ -72,6 +103,7 @@ jobs:
 
           {
             echo "release=true"
+            echo "rebuild=$REBUILD"
             echo "version=$VERSION"
             echo "tag=$TAG"
             echo "notes<<RELEASE_NOTES_EOF"
@@ -113,7 +145,13 @@ jobs:
           fi
           sudo apt-get update -qq && sudo apt-get install -y -qq apt-utils
           echo "$APT_SIGNING_KEY" | gpg --batch --import
-          KEY="$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/ { print $10; exit }')"
+          KEY=""
+          while IFS=: read -r -a FIELDS; do
+            if [ "${FIELDS[0]}" = "fpr" ]; then
+              KEY="${FIELDS[9]}"
+              break
+            fi
+          done < <(gpg --list-secret-keys --with-colons)
 
           # gh-pages holds the repository; created on the first release.
           git clone --branch gh-pages "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY.git" site \
@@ -143,18 +181,30 @@ jobs:
           touch .nojekyll
 
           git add -A
-          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
-            commit -q -m "wb-homekit ${{ needs.check.outputs.version }}"
-          git push -q origin gh-pages
+          if ! git diff --cached --quiet; then
+            git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
+              commit -q -m "wb-homekit ${{ needs.check.outputs.version }}"
+            git push -q origin gh-pages
+          fi
 
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
           NOTES: ${{ needs.check.outputs.notes }}
+          TAG: ${{ needs.check.outputs.tag }}
         run: |
+          set -euo pipefail
           printf '%s\n' "$NOTES" > release-notes.md
-          gh release create "${{ needs.check.outputs.tag }}" dist/*.deb \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "${{ needs.check.outputs.tag }}" \
-            --notes-file release-notes.md \
-            --target "$GITHUB_SHA"
+          if [ "${{ needs.check.outputs.rebuild }}" = "true" ]; then
+            # Same version rebuilt: the tag follows the current commit, the package and notes are replaced.
+            git -C source tag -f "$TAG" "$GITHUB_SHA"
+            git -C source push -f origin "refs/tags/$TAG"
+            gh release upload "$TAG" dist/*.deb --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file release-notes.md
+          else
+            gh release create "$TAG" dist/*.deb \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" \
+              --notes-file release-notes.md \
+              --target "$GITHUB_SHA"
+          fi

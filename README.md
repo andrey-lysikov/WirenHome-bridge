@@ -22,7 +22,7 @@
 
 ```bash
 curl -fsSL https://andrey-lysikov.github.io/WirenHome-bridge/wb-homekit.gpg -o /usr/share/keyrings/wb-homekit.gpg
-echo "deb [signed-by=/usr/share/keyrings/wb-homekit.gpg] https://andrey-lysikov.github.io/WirenHome-bridge stable main" > /etc/apt/sources.list.d/wb-homekit.list
+echo "deb [arch=arm64 signed-by=/usr/share/keyrings/wb-homekit.gpg] https://andrey-lysikov.github.io/WirenHome-bridge stable main" > /etc/apt/sources.list.d/wb-homekit.list
 apt update
 apt install wb-homekit
 ```

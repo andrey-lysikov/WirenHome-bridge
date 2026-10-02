@@ -17,6 +17,10 @@ jobs:
   build:
     runs-on: ubuntu-26.04-arm
     container: swift:6.4.0-bookworm
+    # The container's default shell is sh (dash); every step uses bash, as on the hosted runners.
+    defaults:
+      run:
+        shell: bash
 
     outputs:
       artifact: wb-homekit-${{ github.sha }}
@@ -36,7 +40,6 @@ jobs:
           restore-keys: build-swift-6.4.0-bookworm-arm64-
 
       - name: Run the tests
-        shell: bash
         run: |
           set -o pipefail
           # On failure repeat the important lines at the very end, where they are easy to find.
