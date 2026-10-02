@@ -113,10 +113,6 @@ public actor HAPController {
         await onPairingChange?(false)
     }
 
-    public func updateSetupCode(_ code: String) {
-        setupCode = code
-    }
-
     // Call when the accessory database changes, so controllers refetch it.
     public func accessoriesChanged() {
         identity.bumpConfigNumber()

@@ -5,10 +5,10 @@ set -e
 
 # The settings page is generated at runtime; drop it with the package so it leaves the web UI.
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
-    rm -f /var/lib/wb-mqtt-confed/schemas/wb-homekit.schema.json
+    rm -f /var/lib/wb-mqtt-confed/schemas/wirenhome-bridge.schema.json
 fi
 if [ "$1" = "purge" ]; then
-    rm -f /etc/wb-homekit.conf
+    rm -f /etc/wirenhome-bridge.conf
 fi
 
 systemctl daemon-reload || true

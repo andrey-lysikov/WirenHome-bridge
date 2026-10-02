@@ -4,6 +4,6 @@
 set -e
 
 if [ "$1" = "remove" ]; then
-    systemctl stop wb-homekit.service || true
-    systemctl disable wb-homekit.service || true
+    systemctl stop wirenhome-bridge.service || true
+    systemctl disable wirenhome-bridge.service || true
 fi

@@ -9,7 +9,7 @@ import Foundation
 
 public typealias Translations = [String: String]
 
-public struct WBControlMeta: Sendable, Equatable, Codable {
+public struct WBControlMeta: Sendable, Equatable, Decodable {
     public var type: String?
     public var readonly: Bool?
     public var units: String?
@@ -20,23 +20,6 @@ public struct WBControlMeta: Sendable, Equatable, Codable {
     public var title: Translations?
     public var enumTitles: [String: Translations]?
     public var error: String?
-
-    public init(
-        type: String? = nil, readonly: Bool? = nil, units: String? = nil, min: Double? = nil, max: Double? = nil,
-        precision: Double? = nil, order: Int? = nil, title: Translations? = nil, enumTitles: [String: Translations]? = nil,
-        error: String? = nil
-    ) {
-        self.type = type
-        self.readonly = readonly
-        self.units = units
-        self.min = min
-        self.max = max
-        self.precision = precision
-        self.order = order
-        self.title = title
-        self.enumTitles = enumTitles
-        self.error = error
-    }
 
     enum CodingKeys: String, CodingKey {
         case type, readonly, units, min, max, precision, order, title, error
@@ -74,41 +57,6 @@ public struct WBControlMeta: Sendable, Equatable, Codable {
         try? JSONDecoder().decode(WBControlMeta.self, from: Data(payload.utf8))
     }
 
-    public func encoded() -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        return (try? String(decoding: encoder.encode(self), as: UTF8.self)) ?? "{}"
-    }
-}
-
-public struct WBDeviceMeta: Sendable, Equatable, Codable {
-    public var driver: String?
-    public var title: Translations?
-
-    public init(driver: String? = nil, title: Translations? = nil) {
-        self.driver = driver
-        self.title = title
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case driver, title
-    }
-
-    public init(from decoder: any Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        driver = try? c.decodeIfPresent(String.self, forKey: .driver)
-        title = c.translations(.title)
-    }
-
-    public static func decode(_ payload: String) -> WBDeviceMeta? {
-        try? JSONDecoder().decode(WBDeviceMeta.self, from: Data(payload.utf8))
-    }
-
-    public func encoded() -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        return (try? String(decoding: encoder.encode(self), as: UTF8.self)) ?? "{}"
-    }
 }
 
 extension KeyedDecodingContainer {

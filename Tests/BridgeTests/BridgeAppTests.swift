@@ -9,10 +9,8 @@ import WBKit
 
 actor FakeBroker: MQTTPublisher {
     private(set) var retained: [String: String] = [:]
-    private(set) var published: [MQTTMessage] = []
 
     func publish(_ message: MQTTMessage) async {
-        published.append(message)
         retained[message.topic] = message.payload.isEmpty ? nil : message.payload
     }
 }
@@ -228,17 +226,6 @@ struct Harness {
     #expect(await h.app.checkSettings() == false)
     #expect(await h.app.currentState.dashboards == ["kitchen"])
     #expect(await h.page.settings == Data("{ not json".utf8))
-}
-
-@Test func clearsTheOldDevicePage() async {
-    let h = Harness()
-    await h.app.handle(.connected)
-    await h.app.handle(.message(MQTTMessage(topic: "/devices/wb-homekit/controls/pincode", payload: "031-45-154")))
-    await h.app.handle(.message(MQTTMessage(topic: "/devices/wb-homekit/meta", payload: #"{"driver":"wb-homekit"}"#)))
-    // Our own removal echoes back empty and is left alone.
-    await h.app.handle(.message(MQTTMessage(topic: "/devices/wb-homekit/meta", payload: "")))
-    let cleared = await h.broker.published.filter { $0.payload.isEmpty && $0.retain }.map(\.topic)
-    #expect(cleared == ["/devices/wb-homekit/controls/pincode", "/devices/wb-homekit/meta"])
 }
 
 @Test func waitsForDashboardEditsToSettle() async throws {

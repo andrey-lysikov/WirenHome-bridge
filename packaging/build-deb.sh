@@ -11,33 +11,33 @@ OUT="$3"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ARCH="$(dpkg --print-architecture)"
-ROOT="$(mktemp -d)/wb-homekit"
+ROOT="$(mktemp -d)/wirenhome-bridge"
 
-install -D -m 0755 "$BINARY" "$ROOT/usr/bin/wb-homekit"
-install -D -m 0644 "$HERE/wb-homekit.service" "$ROOT/lib/systemd/system/wb-homekit.service"
-install -D -m 0644 "$HERE/../LICENSE" "$ROOT/usr/share/doc/wb-homekit/copyright"
+install -D -m 0755 "$BINARY" "$ROOT/usr/bin/wirenhome-bridge"
+install -D -m 0644 "$HERE/wirenhome-bridge.service" "$ROOT/lib/systemd/system/wirenhome-bridge.service"
+install -D -m 0644 "$HERE/../LICENSE" "$ROOT/usr/share/doc/wirenhome-bridge/copyright"
 for script in postinst prerm postrm; do
     install -D -m 0755 "$HERE/$script" "$ROOT/DEBIAN/$script"
 done
-# /etc/wb-homekit.conf and the confed schema are written by the bridge itself (settings page in the web UI).
+# /etc/wirenhome-bridge.conf and the confed schema are written by the bridge itself (settings page in the web UI).
 
 # Updates come from the project's signed apt repository once its public key is in the tree.
-if [ -f "$HERE/wb-homekit.gpg" ]; then
-    install -D -m 0644 "$HERE/wb-homekit.gpg" "$ROOT/usr/share/keyrings/wb-homekit.gpg"
-    install -D -m 0644 "$HERE/wb-homekit.list" "$ROOT/etc/apt/sources.list.d/wb-homekit.list"
-    echo "/etc/apt/sources.list.d/wb-homekit.list" >> "$ROOT/DEBIAN/conffiles"
+if [ -f "$HERE/wirenhome-bridge.gpg" ]; then
+    install -D -m 0644 "$HERE/wirenhome-bridge.gpg" "$ROOT/usr/share/keyrings/wirenhome-bridge.gpg"
+    install -D -m 0644 "$HERE/wirenhome-bridge.list" "$ROOT/etc/apt/sources.list.d/wirenhome-bridge.list"
+    echo "/etc/apt/sources.list.d/wirenhome-bridge.list" >> "$ROOT/DEBIAN/conffiles"
 else
-    echo "warning: packaging/wb-homekit.gpg is missing, the package will not receive apt updates" >&2
+    echo "warning: packaging/wirenhome-bridge.gpg is missing, the package will not receive apt updates" >&2
 fi
 
 # dpkg-shlibdeps needs a debian/control to run, so give it a throwaway one.
 SHLIBS="$(mktemp -d)"
 mkdir -p "$SHLIBS/debian"
-printf 'Source: wb-homekit\n\nPackage: wb-homekit\nArchitecture: any\n' > "$SHLIBS/debian/control"
-LIBDEPS="$(cd "$SHLIBS" && dpkg-shlibdeps -O "$ROOT/usr/bin/wb-homekit" | sed -n 's/^shlibs:Depends=//p')"
+printf 'Source: wirenhome-bridge\n\nPackage: wirenhome-bridge\nArchitecture: any\n' > "$SHLIBS/debian/control"
+LIBDEPS="$(cd "$SHLIBS" && dpkg-shlibdeps -O "$ROOT/usr/bin/wirenhome-bridge" | sed -n 's/^shlibs:Depends=//p')"
 
 cat > "$ROOT/DEBIAN/control" <<EOF
-Package: wb-homekit
+Package: wirenhome-bridge
 Version: $VERSION
 Architecture: $ARCH
 Maintainer: Andrey Lysikov
@@ -49,4 +49,4 @@ Description: Wiren Board to Apple Home bridge
 EOF
 
 mkdir -p "$OUT"
-dpkg-deb --root-owner-group --build "$ROOT" "$OUT/wb-homekit_${VERSION}_${ARCH}.deb"
+dpkg-deb --root-owner-group --build "$ROOT" "$OUT/wirenhome-bridge_${VERSION}_${ARCH}.deb"

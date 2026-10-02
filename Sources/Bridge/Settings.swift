@@ -25,14 +25,14 @@ public enum SettingsError: Error, Equatable, CustomStringConvertible {
 }
 
 public struct Settings: Sendable, Equatable {
-    public static let defaultConfigPath = "/etc/wb-homekit.conf"
+    public static let defaultConfigPath = "/etc/wirenhome-bridge.conf"
 
     // Fixed on the controller so pairing data is always found after a firmware reflash; --data-dir is for development.
     public static var defaultDataDirectory: String {
         #if os(macOS)
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/WirenHome").path
         #else
-        "/mnt/data/wb-homekit"
+        "/mnt/data/wirenhome-bridge"
         #endif
     }
 
@@ -92,8 +92,7 @@ public struct Settings: Sendable, Equatable {
         } catch {
             throw SettingsError.unreadableConfig(path, "\(error)")
         }
-        // The settings page keeps the broker under "advanced"; version 0.2 had it at the top level.
-        let broker = file.advanced?.mqtt ?? file.mqtt
+        let broker = file.advanced?.mqtt
         if let host = broker?.host, !host.isEmpty { mqtt.host = host }
         if let port = broker?.port { mqtt.port = port }
         if let user = broker?.username, !user.isEmpty { mqtt.username = user }
@@ -112,7 +111,6 @@ public struct Settings: Sendable, Equatable {
             let mqtt: MQTT?
         }
 
-        let mqtt: MQTT?
         let advanced: Advanced?
     }
 }

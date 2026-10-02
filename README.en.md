@@ -12,7 +12,7 @@ Apple Home bridge for Wiren Board controllers.
 - Lives inside the Wiren Board web UI: **Settings** → **Configuration files** → **Apple HomeKit bridge**
 - You choose which dashboards go to Apple Home; every widget becomes one accessory
 - Widget roles: Auto, Light, Outlet, Fan, Thermostat, Blinds, Valve, Leak, Motion, Contact, Gate and Info (read-only)
-- Save data in /mnt/data/wb-homekit
+- Save data in /mnt/data/wirenhome-bridge
 
 *WARNING: the bridge is not certified by Apple, so the Home app asks you to confirm adding an uncertified accessory.*
 
@@ -21,17 +21,17 @@ Apple Home bridge for Wiren Board controllers.
 Requires Wiren Board firmware based on Debian 13 or newer (arm64)
 
 ```bash
-curl -fsSL https://andrey-lysikov.github.io/WirenHome-bridge/wb-homekit.gpg -o /usr/share/keyrings/wb-homekit.gpg
-echo "deb [arch=arm64 signed-by=/usr/share/keyrings/wb-homekit.gpg] https://andrey-lysikov.github.io/WirenHome-bridge stable main" > /etc/apt/sources.list.d/wb-homekit.list
+curl -fsSL https://andrey-lysikov.github.io/WirenHome-bridge/wirenhome-bridge.gpg -o /usr/share/keyrings/wirenhome-bridge.gpg
+echo "deb [arch=arm64 signed-by=/usr/share/keyrings/wirenhome-bridge.gpg] https://andrey-lysikov.github.io/WirenHome-bridge stable main" > /etc/apt/sources.list.d/wirenhome-bridge.list
 apt update
-apt install wb-homekit
+apt install wirenhome-bridge
 ```
 
 Or install the latest package directly:
 
 ```bash
-curl -fsSLO https://andrey-lysikov.github.io/WirenHome-bridge/wb-homekit_latest_arm64.deb
-apt install ./wb-homekit_latest_arm64.deb
+curl -fsSLO https://andrey-lysikov.github.io/WirenHome-bridge/wirenhome-bridge_latest_arm64.deb
+apt install ./wirenhome-bridge_latest_arm64.deb
 ```
 
 To update, run `apt update && apt upgrade`
@@ -57,7 +57,7 @@ Changes in dashboards are picked up automatically within about half a minute aft
 | Gate | "open" and "close" buttons (one button is an impulse input) or a switch; optional "open" and "closed" end sensors and an alarm | gate: open/close, opening/closing |
 | Info | anything | sensors only, nothing can be switched |
 
-Advanced settings are in /etc/wb-homekit.conf.
+Advanced settings are in /etc/wirenhome-bridge.conf.
 
 ## Tech
 

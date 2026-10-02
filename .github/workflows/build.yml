@@ -23,21 +23,13 @@ jobs:
         shell: bash
 
     outputs:
-      artifact: wb-homekit-${{ github.sha }}
+      artifact: wirenhome-bridge-${{ github.sha }}
 
     steps:
       - uses: actions/checkout@v7
 
       - name: Install packaging tools
-        run: apt-get update && apt-get install -y --no-install-recommends dpkg-dev zstd
-
-      # Dependencies (two BoringSSL copies) dominate the build; reuse them between runs.
-      - name: Cache the build directory
-        uses: actions/cache@v5
-        with:
-          path: .build
-          key: build-swift-6.4.0-bookworm-arm64-${{ hashFiles('Package.resolved', 'Package.swift') }}
-          restore-keys: build-swift-6.4.0-bookworm-arm64-
+        run: apt-get update && apt-get install -y --no-install-recommends dpkg-dev
 
       - name: Run the tests
         run: |
@@ -56,7 +48,7 @@ jobs:
       - name: Build the package
         run: |
           VERSION="$(packaging/version.sh)"
-          BINARY="$(swift build -c release --build-system native --static-swift-stdlib --show-bin-path)/wb-homekit"
+          BINARY="$(swift build -c release --build-system native --static-swift-stdlib --show-bin-path)/wirenhome-bridge"
           if [ "${{ inputs.strip }}" = "true" ]; then
             strip --strip-unneeded "$BINARY"
           fi
@@ -67,6 +59,6 @@ jobs:
       - name: Attach the package to the run
         uses: actions/upload-artifact@v7
         with:
-          name: wb-homekit-${{ github.sha }}
+          name: wirenhome-bridge-${{ github.sha }}
           path: dist/*.deb
           if-no-files-found: error

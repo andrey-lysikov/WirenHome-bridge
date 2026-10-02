@@ -20,9 +20,9 @@ public final class BridgeRunner: Sendable {
 
     static var clientID: String {
         #if os(macOS)
-        "wb-homekit-dev"
+        "wirenhome-bridge-dev"
         #else
-        "wb-homekit"
+        "wirenhome-bridge"
         #endif
     }
 
@@ -36,8 +36,7 @@ public final class BridgeRunner: Sendable {
         connection = MQTTConnection(
             settings: settings.mqtt,
             clientID: Self.clientID,
-            subscriptions: ["/devices/#"],
-            will: nil
+            subscriptions: ["/devices/#"]
         )
         // The web UI lives on the same host as the broker: localhost on the controller, its IP from Xcode.
         let dashboards = WebUIDashboardsSource(host: settings.mqtt.host)
@@ -89,7 +88,7 @@ public final class BridgeRunner: Sendable {
                 }
             }
             group.addTask {
-                // The settings page saves /etc/wb-homekit.conf; pick changes up within seconds.
+                // The settings page saves /etc/wirenhome-bridge.conf; pick changes up within seconds.
                 while !Task.isCancelled {
                     if await self.app.checkSettings() {
                         await self.stop()

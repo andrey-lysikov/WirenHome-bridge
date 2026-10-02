@@ -23,7 +23,7 @@ public enum BridgeStatus: Int, CaseIterable, Sendable {
     }
 }
 
-// /etc/wb-homekit.conf as the confed form reads and writes it.
+// /etc/wirenhome-bridge.conf as the confed form reads and writes it.
 struct SettingsFile: Equatable, Codable {
     struct MQTT: Equatable, Codable {
         var host = "localhost"
@@ -97,10 +97,8 @@ struct SettingsFile: Equatable, Codable {
         let c = try decoder.container(keyedBy: Key.self)
         let pairing = try? c.decodeIfPresent(Pairing.self, forKey: Key("pairing"))
         resetPairing = pairing?.reset ?? false
-        // Version 0.2 kept the broker at the top level.
         let advanced = try? c.decodeIfPresent(Advanced.self, forKey: Key("advanced"))
-        let legacy = try? c.decodeIfPresent(MQTT.self, forKey: Key("mqtt"))
-        mqtt = advanced?.mqtt ?? legacy ?? MQTT()
+        mqtt = advanced?.mqtt ?? MQTT()
         var panels: [String: Dashboard] = [:]
         for key in c.allKeys where key.stringValue.hasPrefix(Self.panelPrefix) {
             panels[String(key.stringValue.dropFirst(Self.panelPrefix.count))] = (try? c.decode(Dashboard.self, forKey: key)) ?? Dashboard()
@@ -344,9 +342,9 @@ public struct FileSettingsPage: SettingsPageStore {
     // confed watches this directory and lists every schema found there.
     public static var defaultSchemaPath: String {
         #if os(macOS)
-        Settings.defaultDataDirectory + "/wb-homekit.schema.json"
+        Settings.defaultDataDirectory + "/wirenhome-bridge.schema.json"
         #else
-        "/var/lib/wb-mqtt-confed/schemas/wb-homekit.schema.json"
+        "/var/lib/wb-mqtt-confed/schemas/wirenhome-bridge.schema.json"
         #endif
     }
 

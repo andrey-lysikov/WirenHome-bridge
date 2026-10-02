@@ -233,7 +233,6 @@ public enum HAPType {
         public static let leakSensor = "83"
         public static let motionSensor = "85"
         public static let contactSensor = "80"
-        public static let occupancySensor = "86"
         public static let temperatureSensor = "8A"
         public static let humiditySensor = "82"
         public static let carbonDioxideSensor = "97"
@@ -271,14 +270,12 @@ public enum HAPType {
         public static let valveType = "D5"
         public static let leakDetected = "70"
         public static let motionDetected = "22"
-        public static let occupancyDetected = "71"
         public static let contactSensorState = "6A"
         public static let currentRelativeHumidity = "10"
         public static let carbonDioxideDetected = "92"
         public static let carbonDioxideLevel = "93"
         public static let currentAmbientLightLevel = "6B"
         public static let programmableSwitchEvent = "73"
-        public static let statusFault = "77"
         public static let configuredName = "E3"
     }
 

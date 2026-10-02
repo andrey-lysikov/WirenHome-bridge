@@ -29,23 +29,10 @@ import Testing
     #expect(meta.order == 3)
 }
 
-@Test func encodesWithEnumKey() throws {
-    let meta = WBControlMeta(type: "value", readonly: false, order: 1, enumTitles: ["0": ["ru": "Авто"]])
-    let encoded = meta.encoded()
-    #expect(encoded.contains(#""enum":{"0":{"ru":"Авто"}}"#))
-    #expect(WBControlMeta.decode(encoded) == meta)
-}
-
 @Test func buildsFromLegacyFields() {
     let meta = WBControlMeta(legacy: ["type": "switch", "readonly": "1", "order": "4", "error": "r"])
     #expect(meta.type == "switch")
     #expect(meta.readonly == true)
     #expect(meta.order == 4)
     #expect(meta.error == "r")
-}
-
-@Test func decodesDeviceMeta() throws {
-    let meta = try #require(WBDeviceMeta.decode(#"{"driver":"wb-modbus","title":{"en":"WB-MSW v.4 147"}}"#))
-    #expect(meta.driver == "wb-modbus")
-    #expect(meta.title == ["en": "WB-MSW v.4 147"])
 }

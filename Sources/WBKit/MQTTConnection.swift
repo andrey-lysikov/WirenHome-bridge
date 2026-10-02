@@ -2,7 +2,6 @@
 //  SPDX-License-Identifier: Apache-2.0
 
 import Common
-import MQTTNIO
 import NIOCore
 import NIOPosix
 
@@ -26,15 +25,19 @@ public actor MQTTConnection: MQTTPublisher {
     private let settings: MQTTSettings
     private let clientID: String
     private let subscriptions: [String]
-    private let will: MQTTMessage?
-    private var client: MQTTClient?
+    private var outbound: NIOAsyncChannelOutboundWriter<ByteBuffer>?
+    private var connected = false
+    private var lastInbound = ContinuousClock.now
 
-    public init(settings: MQTTSettings, clientID: String, subscriptions: [String], will: MQTTMessage?) {
+    static let keepAlive: UInt16 = 60
+    // A larger packet than this is treated as a broken stream, not buffered forever.
+    static let maxPacket = 16 * 1024 * 1024
+
+    public init(settings: MQTTSettings, clientID: String, subscriptions: [String]) {
         (events, continuation) = AsyncStream.makeStream(bufferingPolicy: .unbounded)
         self.settings = settings
         self.clientID = clientID
         self.subscriptions = subscriptions
-        self.will = will
     }
 
     // Keeps the session up, reconnecting after failures until the task is cancelled.
@@ -46,50 +49,111 @@ public actor MQTTConnection: MQTTPublisher {
         continuation.finish()
     }
 
+    // QoS 0: the broker is local, and QoS 1 without a resend store would add nothing.
     public func publish(_ message: MQTTMessage) async {
-        guard let client else { return }
+        guard connected, let outbound else { return }
         do {
-            try await client.publish(to: message.topic, payload: ByteBuffer(string: message.payload), qos: .atLeastOnce, retain: message.retain)
+            try await outbound.write(Self.buffer(.publish(topic: message.topic, payload: Array(message.payload.utf8), retain: message.retain, packetID: nil)))
         } catch {
             Log.warning("MQTT publish to \(message.topic) failed: \(error)")
         }
     }
 
     public func disconnect() async {
-        guard let client else { return }
-        try? await client.disconnect()
+        guard let outbound else { return }
+        try? await outbound.write(Self.buffer(.disconnect))
+        outbound.finish()
     }
 
     private func session() async {
-        let client = MQTTClient(
-            host: settings.host,
-            port: settings.port,
-            identifier: clientID,
-            eventLoopGroupProvider: .shared(MultiThreadedEventLoopGroup.singleton),
-            configuration: .init(userName: settings.username, password: settings.password)
-        )
         do {
-            let will = self.will.map { (topicName: $0.topic, payload: ByteBuffer(string: $0.payload), qos: MQTTQoS.atLeastOnce, retain: $0.retain) }
-            try await client.connect(cleanSession: true, will: will)
-            // Listener goes first so retained messages sent right after SUBACK are not lost.
-            let listener = client.createPublishListener()
-            _ = try await client.subscribe(to: subscriptions.map { MQTTSubscribeInfo(topicFilter: $0, qos: .atLeastOnce) })
-            self.client = client
-            Log.info("MQTT connected to \(settings.host):\(settings.port)")
-            continuation.yield(.connected)
-            for await result in listener {
-                if case .success(let info) = result {
-                    continuation.yield(.message(MQTTMessage(topic: info.topicName, payload: String(buffer: info.payload), retain: info.retain)))
+            let channel = try await ClientBootstrap(group: MultiThreadedEventLoopGroup.singleton)
+                .connectTimeout(.seconds(5))
+                .connect(host: settings.host, port: settings.port) { channel in
+                    channel.eventLoop.makeCompletedFuture {
+                        try NIOAsyncChannel<ByteBuffer, ByteBuffer>(wrappingChannelSynchronously: channel)
+                    }
                 }
+            try await channel.executeThenClose { inbound, outbound in
+                try await self.serve(inbound, outbound)
             }
             Log.warning("MQTT connection closed")
         } catch {
             Log.warning("MQTT connection to \(settings.host):\(settings.port) failed: \(error)")
         }
-        if self.client != nil {
-            self.client = nil
+        outbound = nil
+        if connected {
+            connected = false
             continuation.yield(.disconnected)
         }
-        try? await client.shutdown()
     }
+
+    private func serve(_ inbound: NIOAsyncChannelInboundStream<ByteBuffer>, _ outbound: NIOAsyncChannelOutboundWriter<ByteBuffer>) async throws {
+        self.outbound = outbound
+        lastInbound = .now
+        try await outbound.write(Self.buffer(.connect(
+            clientID: clientID, username: settings.username, password: settings.password, keepAlive: Self.keepAlive
+        )))
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                var pending: [UInt8] = []
+                for try await chunk in inbound {
+                    pending += chunk.readableBytesView
+                    guard pending.count <= Self.maxPacket else { throw MQTTPacketError.malformed }
+                    while let packet = try MQTTPacket.parse(&pending) {
+                        try await self.handle(packet, outbound)
+                    }
+                    await self.touch()
+                }
+            }
+            group.addTask {
+                while true {
+                    try await Task.sleep(for: .seconds(Int(Self.keepAlive) / 2))
+                    try await self.ping(outbound)
+                }
+            }
+            // Whichever ends first (stream closed, error, silent broker) ends the session.
+            try await group.next()
+            group.cancelAll()
+        }
+    }
+
+    private func handle(_ packet: MQTTPacket, _ outbound: NIOAsyncChannelOutboundWriter<ByteBuffer>) async throws {
+        switch packet {
+        case .connack(let code):
+            guard code == 0 else { throw MQTTPacketError.refused(code) }
+            try await outbound.write(Self.buffer(.subscribe(packetID: 1, filters: subscriptions)))
+        case .suback:
+            // Retained messages follow the SUBACK, so the bridge hears "connected" before them.
+            connected = true
+            Log.info("MQTT connected to \(settings.host):\(settings.port)")
+            continuation.yield(.connected)
+        case .publish(let topic, let payload, let retain, let packetID):
+            if let packetID {
+                try await outbound.write(Self.buffer(.puback(packetID: packetID)))
+            }
+            continuation.yield(.message(MQTTMessage(topic: topic, payload: String(decoding: payload, as: UTF8.self), retain: retain)))
+        default:
+            break
+        }
+    }
+
+    private func touch() {
+        lastInbound = .now
+    }
+
+    private func ping(_ outbound: NIOAsyncChannelOutboundWriter<ByteBuffer>) async throws {
+        guard ContinuousClock.now - lastInbound < .seconds(Int(Self.keepAlive) * 3 / 2) else {
+            throw MQTTConnectionError.timeout
+        }
+        try await outbound.write(Self.buffer(.pingreq))
+    }
+
+    static func buffer(_ packet: MQTTPacket) -> ByteBuffer {
+        ByteBuffer(bytes: packet.encoded())
+    }
+}
+
+public enum MQTTConnectionError: Error, Equatable {
+    case timeout
 }

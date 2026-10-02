@@ -12,7 +12,7 @@
 - Работает внутри веб-интерфейса Wiren Board: **Настройки** → **Конфигурационные файлы** → **Мост Apple HomeKit**.
 - Вы сами выбираете, какие панели попадут в Apple Home; каждый виджет становится одним аксессуаром
 - Роли виджетов: Авто, Свет, Розетка, Вентилятор, Термостат, Шторы, Кран, Протечка, Движение, Открытие, Ворота и Инфо (только чтение)
-- Данные хранятся в /mnt/data/wb-homekit
+- Данные хранятся в /mnt/data/wirenhome-bridge
 
 *ВНИМАНИЕ: мост не сертифицирован Apple, поэтому приложение «Дом» попросит подтвердить добавление несертифицированного аксессуара.*
 
@@ -21,17 +21,17 @@
 Нужна прошивка Wiren Board на Debian 13 или новее (arm64)
 
 ```bash
-curl -fsSL https://andrey-lysikov.github.io/WirenHome-bridge/wb-homekit.gpg -o /usr/share/keyrings/wb-homekit.gpg
-echo "deb [arch=arm64 signed-by=/usr/share/keyrings/wb-homekit.gpg] https://andrey-lysikov.github.io/WirenHome-bridge stable main" > /etc/apt/sources.list.d/wb-homekit.list
+curl -fsSL https://andrey-lysikov.github.io/WirenHome-bridge/wirenhome-bridge.gpg -o /usr/share/keyrings/wirenhome-bridge.gpg
+echo "deb [arch=arm64 signed-by=/usr/share/keyrings/wirenhome-bridge.gpg] https://andrey-lysikov.github.io/WirenHome-bridge stable main" > /etc/apt/sources.list.d/wirenhome-bridge.list
 apt update
-apt install wb-homekit
+apt install wirenhome-bridge
 ```
 
 Или установите последний пакет напрямую — он сам подключит репозиторий:
 
 ```bash
-curl -fsSLO https://andrey-lysikov.github.io/WirenHome-bridge/wb-homekit_latest_arm64.deb
-apt install ./wb-homekit_latest_arm64.deb
+curl -fsSLO https://andrey-lysikov.github.io/WirenHome-bridge/wirenhome-bridge_latest_arm64.deb
+apt install ./wirenhome-bridge_latest_arm64.deb
 ```
 
 Обновление — обычным `apt update && apt upgrade`
@@ -57,7 +57,7 @@ apt install ./wb-homekit_latest_arm64.deb
 | Ворота | кнопки «открыть», «закрыть» (одна кнопка — импульсный вход) или выключатель; по желанию концевики «открыто», «закрыто» и авария | ворота: открыть/закрыть, открываются/закрываются |
 | Инфо | что угодно | только датчики, ничего нельзя переключить |
 
-Дополнительные настройки — в /etc/wb-homekit.conf.
+Дополнительные настройки — в /etc/wirenhome-bridge.conf.
 
 ## Технологии
 

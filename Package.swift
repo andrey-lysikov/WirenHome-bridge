@@ -10,10 +10,9 @@ let package = Package(
         .macOS(.v26)
     ],
     products: [
-        .executable(name: "wb-homekit", targets: ["WirenHome"])
+        .executable(name: "wirenhome-bridge", targets: ["WirenHome"])
     ],
     dependencies: [
-        .package(url: "https://github.com/swift-server-community/mqtt-nio.git", from: "2.13.0"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.80.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", "4.0.0"..<"6.0.0")
     ],
@@ -23,7 +22,6 @@ let package = Package(
             name: "WBKit",
             dependencies: [
                 "Common",
-                .product(name: "MQTTNIO", package: "mqtt-nio"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio")

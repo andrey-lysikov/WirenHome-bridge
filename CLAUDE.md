@@ -6,7 +6,7 @@
 
 - Swift 6, `swift-tools-version: 6.2`, strict concurrency (Swift 6 language mode).
 - Mac для разработки: macOS 26+, Apple Silicon.
-- Swift Package Manager, исполняемый таргет `wb-homekit`.
+- Swift Package Manager, исполняемый таргет `wirenhome-bridge`.
 - Разработка и запуск: Xcode на macOS (открыть `Package.swift`, Cmd+R). Проект всегда должен собираться и запускаться в Xcode.
 - Продакшн: только штатная прошивка Wiren Board на Debian 13 Trixie и новее, arm64, работа внутри контроллера. Debian 11 (glibc 2.31, libstdc++ 10) не поддерживается.
 
@@ -18,7 +18,8 @@
 - Минимум сторонних библиотек. Любую новую зависимость согласовывать явно, указав, для какой функции она нужна.
 - Согласованные зависимости:
   - `apple/swift-crypto` — Ed25519, X25519, ChaCha20-Poly1305, HKDF/SHA-512 (HAP).
-  - `swift-server-community/mqtt-nio` 2.x — MQTT-клиент; его SwiftNIO (`NIOCore`, `NIOPosix`, `NIOHTTP1`, подключён напрямую) используется и для TCP/HTTP-сервера HAP, и для HTTP-клиента панелей.
+  - `apple/swift-nio` (`NIOCore`, `NIOPosix`, `NIOHTTP1`) — TCP/HTTP-сервер HAP, HTTP-клиент панелей и свой MQTT-клиент.
+- MQTT — своя реализация 3.1.1 (`MQTTPacket` — пакеты без сети, `MQTTConnection` — сессия на NIO): CONNECT с логином, SUBSCRIBE, PUBLISH QoS 0 (входящий QoS 1 подтверждается PUBACK), PING раз в 30 с, разрыв после 90 с тишины, переподключение через 3 с. mqtt-nio не используем (тянула swift-nio-ssl, transport-services, swift-log).
 - SRP-6a (Pair-Setup: 3072, g=5, SHA-512, `g` в M1 без паддинга) и `BigUInt` — своя реализация, обязательно с тестовыми векторами HAP.
 - В коде моста только `FoundationEssentials` на Linux (`#if canImport(FoundationEssentials)`, на macOS — Foundation): без `Process`, `FileHandle`, `NSLock`, `String(format:)`, `components(separatedBy:)`, `trimmingCharacters`, `replacingOccurrences`. Замены — `Common` (`Subprocess` на `posix_spawn`, `trimmed`, `percentDecoded`, `hex`), `Mutex` из `Synchronization`, запись лога через `write(2)`. Тесты могут импортировать полную Foundation.
 - JSON — `Codable`. TLV8 — своя реализация с фрагментацией (>255 байт).
@@ -30,14 +31,13 @@
 
 Плагин — страница настроек «Мост Apple HomeKit» в «Настройки → Конфигурационные файлы» (общая форма confed по JSON-схеме); своего фронтенда и устройства в «Устройствах» нет. Свою страницу, как у DALI (`"editor": "dali"`), пакет добавить не может: такие страницы зашиты в `wb-mqtt-homeui`.
 
-- Схему генерирует мост: `/var/lib/wb-mqtt-confed/schemas/wb-homekit.schema.json` (confed следит за каталогом через inotify, перезапуск не нужен); `configFile.validate: false`, без `service`. Переписывается только при изменении содержимого.
-- Разделы формы (и ключи `/etc/wb-homekit.conf`) по порядку: «Сопряжение» `pairing` — в описании (HTML через DOMPurify формы) статус, число аксессуаров и предупреждений, «Версия приложения», PIN, QR-код (SVG от `qrencode`, зависимость пакета), строка `X-HM://…`; поле `reset` — галочка «Сбросить сопряжение»: по «Сохранить» новый PIN и Setup ID, мост снимает её сам. Кнопки с действием в форме confed невозможны (у `type: button` нет зарегистрированных в WB обработчиков). Далее раздел на каждую панель `panel_<id>`: `enabled`, `roles.<widgetId>` (код роли, `enum_titles`); виджет нескольких панелей — только под первой. В конце «Дополнительно» `advanced.mqtt` (в 0.2 — `mqtt` в корне, читается для совместимости).
+- Схему генерирует мост: `/var/lib/wb-mqtt-confed/schemas/wirenhome-bridge.schema.json` (confed следит за каталогом через inotify, перезапуск не нужен); `configFile.validate: false`, без `service`. Переписывается только при изменении содержимого.
+- Разделы формы (и ключи `/etc/wirenhome-bridge.conf`) по порядку: «Сопряжение» `pairing` — в описании (HTML через DOMPurify формы) статус, число аксессуаров и предупреждений, «Версия приложения», PIN, QR-код (SVG от `qrencode`, зависимость пакета), строка `X-HM://…`; поле `reset` — галочка «Сбросить сопряжение»: по «Сохранить» новый PIN и Setup ID, мост снимает её сам. Кнопки с действием в форме confed невозможны (у `type: button` нет зарегистрированных в WB обработчиков). Далее раздел на каждую панель `panel_<id>`: `enabled`, `roles.<widgetId>` (код роли, `enum_titles`); виджет нескольких панелей — только под первой. В конце «Дополнительно» `advanced.mqtt`.
 - Тексты — ключи и английские подписи в `title`/`enum_titles`/`description`, переводы в `translations.ru`/`translations.en` схемы. Предупреждения виджета — `description` поля роли (`warning-<widgetId>`).
-- `/etc/wb-homekit.conf` пишет форма; мост читает его раз в 2 с и применяет без перезапуска; смена `advanced.mqtt` → выход, systemd перезапускает. Источник истины — `state.json` в `/mnt/data`; при первом запуске после обновления (в файле нет `pairing` и `panel_*`) выбор переносится из `state.json` в файл. Файл `0600` (пароль MQTT).
-- Устройство `/devices/wb-homekit` из версий до 0.3 мост удаляет: на любой retained-топик под ним публикует пустой retained.
+- `/etc/wirenhome-bridge.conf` пишет форма; мост читает его раз в 2 с и применяет без перезапуска; смена `advanced.mqtt` → выход, systemd перезапускает. Источник истины — `state.json` в `/mnt/data`; если в файле нет `pairing` и `panel_*` (новый файл, перепрошивка), выбор переносится из `state.json` в файл. Файл `0600` (пароль MQTT).
 - Устройства и контролы — из `/devices/+/controls/+` и JSON в `.../meta` (`type`, `readonly`, `units`, `max`, `title`, `error`). Комнат в MQTT нет.
 - Панели (рабочие столы) — `GET http://<хост MQTT>/api/dashboards` (бэкенд веб-интерфейса за nginx; в MQTT и confed их нет); при ошибке HTTP (например, нужен вход) — чтение `/etc/wb-webui.conf`. Ответ без массива `dashboards` — ошибка, не пустой список. `widgets` панели — список или колонки (`[[…]]`). Опрос раз в 10 с, правки применяются, когда два опроса совпали.
-- Выбор панелей и ролей — на странице настроек; хранится в `state.json` и `/etc/wb-homekit.conf`.
+- Выбор панелей и ролей — на странице настроек; хранится в `state.json` и `/etc/wirenhome-bridge.conf`.
 - Виджет панели = один HAP-аксессуар, ячейка `device/control` = сервис. Дубли ячеек, несуществующие устройства, виджеты и ячейки с пустым именем пропускаются.
 - Имена: аксессуар — имя виджета, сервис — имя ячейки; автоматически приводятся к правилам iOS (буквы, цифры, пробел, `-`, `'`; `₂` → `2`).
 - Ячейки-разделители `separatorN` при переводе пропускаются.
@@ -58,30 +58,30 @@
 - Состояние устройств и моста — в `actor`; типы между акторами — `Sendable`.
 - Без глобального изменяемого состояния, без `@unchecked Sendable` без крайней необходимости.
 - Слои: MQTT-клиент → модель Wiren Board (устройства, панели) → маппинг в HAP-аксессуары → HAP-сервер.
-- Модули: `Common` (лог), `WBKit` (MQTT, топики/meta WB, реестр устройств, HTTP-клиент и источник панелей, виртуальное устройство), `HAPKit` (TLV8, `BigUInt`, SRP, шифрование сессии, HTTP, `HAPController` — логика HAP без сети, `HAPServer` — TCP на NIO), `Discovery` (mDNS через `dns_sd`), `Bridge` (настройки, состояние, плагин, аксессуары, `BridgeApp`/`BridgeRunner`), `WirenHome` (точка входа).
+- Модули: `Common` (лог), `WBKit` (MQTT-клиент, топики/meta WB, реестр контролов, HTTP-клиент и источник панелей), `HAPKit` (TLV8, `BigUInt`, SRP, шифрование сессии, HTTP, `HAPController` — логика HAP без сети, `HAPServer` — TCP на NIO), `Discovery` (mDNS через `dns_sd`), `Bridge` (настройки, состояние, страница настроек, аксессуары, `BridgeApp`/`BridgeRunner`), `WirenHome` (точка входа).
 - Файлы в каталоге данных: `state.json` (PIN, Setup ID, панели, роли), `homekit.json` (id моста, Ed25519-ключ, сопряжения, `c#`); оба `0600`.
 - SRP как в fast-srp-hap (homebridge): `B` и `S` дополняются до 384 байт, `g` в M1 без дополнения, `A` берётся как пришёл; эталонные значения в `Tests/HAPKitTests/SRPVectors.swift`.
 - Имя моста в HomeKit и mDNS: `WirenHome XXXX` (хвост id), производитель `WirenHome`. Мост слушает случайный порт, порт объявляется через mDNS.
-- Запуск из Xcode: в схеме `WirenHome` → Run → Arguments: `--mqtt-host 172.30.212.48`; данные на macOS — `~/Library/Application Support/WirenHome`. MQTT client id на macOS `wb-homekit-dev`, не запускать одновременно со службой на контроллере.
+- Запуск из Xcode: в схеме `WirenHome` → Run → Arguments: `--mqtt-host 172.30.212.48`; данные на macOS — `~/Library/Application Support/WirenHome`. MQTT client id на macOS `wirenhome-bridge-dev`, не запускать одновременно со службой на контроллере.
 - `aid`/`iid` стабильны: ключи виджетов и ячеек сохраняются в файле состояния.
-- Состояние (ключи, сопряжения, PIN, таблица `aid`/`iid`, `c#`, выбор панелей) — в каталоге данных, всегда `/mnt/data/wb-homekit` (энергонезависимый раздел WB, переживает перепрошивку); не настраивается, `--data-dir` только для разработки. `/etc/wb-homekit.conf` — форма настроек (MQTT, панели, роли).
+- Состояние (ключи, сопряжения, PIN, таблица `aid`/`iid`, `c#`, выбор панелей) — в каталоге данных, всегда `/mnt/data/wirenhome-bridge` (энергонезависимый раздел WB, переживает перепрошивку); не настраивается, `--data-dir` только для разработки. `/etc/wirenhome-bridge.conf` — форма настроек (MQTT, панели, роли).
 - Удаление аксессуаров — только по явному изменению панелей; при старте список аксессуаров отдаётся после синхронизации retained MQTT; правки панелей применяются после паузы.
 
 ## Сборка и деплой
 
 - Локально (macOS): только разработка и тесты — Xcode (схема `WirenHome`), `swift build`, `swift test`, запуск против тестового контроллера.
 - Проект лежит в `~/Documents` (iCloud): из CLI собирать с `--scratch-path ~/Library/Caches/WirenHome-build`, иначе codesign тестов падает на xattr. Xcode (DerivedData) не затронут.
-- Сборка arm64 и `.deb` — только в GitHub Actions (раннер `ubuntu-26.04-arm`, сборка в контейнере `swift:6.4.0-bookworm` ради glibc 2.36; версия закреплена, с ней меняется ключ кэша); локально пакеты не собираем.
-  - `build.yml` — тесты, сборка, `.deb` в артефакт запуска (только вручную; также вызывается из `release.yml`); `.build` кэшируется по `Package.resolved`/`Package.swift`.
-  - `release.yml` вызывает `build.yml` со `strip: true` (бинарник без отладочной информации) — релиз `v<версия>` с `.deb`, если версия выше последнего тега и в `changelog.md` есть непустой раздел `## <версия>`. Ручной запуск при версии, равной последнему тегу, пересобирает этот релиз: тег переносится на текущий коммит, `.deb` в релизе и в `gh-pages` заменяется, заметки берутся из `changelog.md` заново (на контроллере такая же версия ставится только `apt install --reinstall wb-homekit`).
+- Сборка arm64 и `.deb` — только в GitHub Actions (раннер `ubuntu-26.04-arm`, сборка в контейнере `swift:6.4.0-bookworm` ради glibc 2.36; версия закреплена); локально пакеты не собираем.
+  - `build.yml` — тесты, сборка, `.deb` в артефакт запуска (только вручную; также вызывается из `release.yml`); без кэша `.build`, все шаги в bash.
+  - `release.yml` вызывает `build.yml` со `strip: true` (бинарник без отладочной информации) — релиз `v<версия>` с `.deb`, если версия выше последнего тега и в `changelog.md` есть непустой раздел `## <версия>`. Ручной запуск при версии, равной последнему тегу, пересобирает этот релиз: тег переносится на текущий коммит, `.deb` в релизе и в `gh-pages` заменяется, заметки берутся из `changelog.md` заново (на контроллере такая же версия ставится только `apt install --reinstall wirenhome-bridge`).
 - Версия — две цифры (`0.1`), единственный источник `Sources/WirenHome/Version.swift`; читает `packaging/version.sh`.
-- Пакет собирает `packaging/build-deb.sh`; `Depends` на libc считает `dpkg-shlibdeps`. В пакете: бинарник, служба, источник apt и ключ `packaging/wb-homekit.gpg` (без ключа пакет собирается, но без обновлений); `Depends` также на `qrencode`. `/etc/wb-homekit.conf` и схему confed создаёт мост; `postrm` удаляет схему при remove и конфиг при purge.
+- Пакет собирает `packaging/build-deb.sh`; `Depends` на libc считает `dpkg-shlibdeps`. В пакете: бинарник, служба, источник apt и ключ `packaging/wirenhome-bridge.gpg` (без ключа пакет собирается, но без обновлений); `Depends` также на `qrencode`. `/etc/wirenhome-bridge.conf` и схему confed создаёт мост; `postrm` удаляет схему при remove и конфиг при purge.
 - `release.yml` кладёт `.deb` в `gh-pages` (`pool/main`, `dists/stable`, последние 5 версий) и подписывает `InRelease`/`Release.gpg` ключом из `APT_SIGNING_KEY` (без пароля).
 - Linux arm64: glibc-сборка с `--build-system native --static-swift-stdlib` (Swift Build в 6.4.0 теряет статические зависимости Foundation, swiftlang/swift-build#1764; флаг убрать после перехода на 6.4.2) в Debian 12 Bookworm (glibc вперёд-совместима, пакет требует glibc ≥ 2.35 и libstdc++ gcc 11+, работает на Debian 13); musl не подходит из-за `dlopen`.
-- Поставка: `.deb` с `/usr/bin/wb-homekit` и службой systemd `wb-homekit.service` (`After=mosquitto.service`, `Restart=always`); `Depends:` на `libavahi-compat-libdnssd1` и `libc6` по факту сборки.
-- Логи на контроллере: `journalctl -u wb-homekit -f`.
+- Поставка: `.deb` с `/usr/bin/wirenhome-bridge` и службой systemd `wirenhome-bridge.service` (`After=mosquitto.service`, `Restart=always`); `Depends:` на `libavahi-compat-libdnssd1` и `libc6` по факту сборки.
+- Логи на контроллере: `journalctl -u wirenhome-bridge -f`.
 - Обновления — свой apt-репозиторий на GitHub Pages (ветка `gh-pages`), индексы подписаны GPG (секрет `APT_SIGNING_KEY`); `release.yml` публикует туда `.deb`.
-  - Пакет ставит `/etc/apt/sources.list.d/wb-homekit.list` и `/usr/share/keyrings/wb-homekit.gpg`; дальше обновление обычным `apt update && apt upgrade`.
+  - Пакет ставит `/etc/apt/sources.list.d/wirenhome-bridge.list` и `/usr/share/keyrings/wirenhome-bridge.gpg`; дальше обновление обычным `apt update && apt upgrade`.
   - Мост обновления не проверяет и не ставит, в плагине только контрол «Версия приложения»; обновляет пользователь сам через apt.
 
 ## Правила кода

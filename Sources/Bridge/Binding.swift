@@ -57,14 +57,6 @@ enum Source: Sendable, Equatable {
         }
     }
 
-    // Momentary buttons, button events and relay blinds keep their HAP value in the app, not in WB.
-    var isTransient: Bool {
-        switch self {
-        case .momentary, .buttonEvent, .blinds: true
-        default: false
-        }
-    }
-
     func read(_ lookup: ControlLookup) -> Result<HAPValue, HAPStatus> {
         switch self {
         case .constant(let value), .ignoredWrite(let value):

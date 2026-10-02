@@ -11,16 +11,15 @@ import Testing
     let change = registry.apply(MQTTMessage(topic: "/devices/relay/controls/K1", payload: "1"))
 
     #expect(change == .value(device: "relay", control: "K1", value: "1"))
-    let device = try #require(registry.device("relay"))
-    #expect(device.meta?.title == ["en": "Relay"])
-    #expect(device.controls["K1"]?.value == "1")
-    #expect(device.controls["K1"]?.meta.type == "switch")
+    let control = try #require(registry.control(device: "relay", control: "K1"))
+    #expect(control.value == "1")
+    #expect(control.meta.type == "switch")
 }
 
 @Test func ignoresCommands() {
     var registry = DeviceRegistry()
     #expect(registry.apply(MQTTMessage(topic: "/devices/relay/controls/K1/on", payload: "1")) == nil)
-    #expect(registry.deviceIDs.isEmpty)
+    #expect(registry.isEmpty)
 }
 
 @Test func legacyErrorOverridesJSONMeta() {
@@ -41,5 +40,5 @@ import Testing
 
     #expect(registry.apply(MQTTMessage(topic: "/devices/test/controls/role", payload: "")) == .meta(device: "test", control: "role"))
     #expect(registry.apply(MQTTMessage(topic: "/devices/test/controls/role/meta", payload: "")) == .removed(device: "test", control: "role"))
-    #expect(registry.device("test") == nil)
+    #expect(registry.isEmpty)
 }

@@ -9,8 +9,8 @@ import Testing
     let directory = temporaryDirectory()
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let config = directory.appendingPathComponent("wb-homekit.conf")
-    try Data(#"{"mqtt":{"host":"wb.local","port":1884,"username":"bridge","password":"secret"},"dataDirectory":"/srv/hk"}"#.utf8).write(to: config)
+    let config = directory.appendingPathComponent("wirenhome-bridge.conf")
+    try Data(#"{"advanced":{"mqtt":{"host":"wb.local","port":1884,"username":"bridge","password":"secret"}},"dataDirectory":"/srv/hk"}"#.utf8).write(to: config)
 
     let settings = try Settings.load(arguments: ["--config", config.path, "--mqtt-host", "172.30.212.48"])
     #expect(settings.mqtt.host == "172.30.212.48")
@@ -40,7 +40,7 @@ import Testing
     let directory = temporaryDirectory()
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let config = directory.appendingPathComponent("wb-homekit.conf")
+    let config = directory.appendingPathComponent("wirenhome-bridge.conf")
     try Data(#"{"pairing":{"reset":false},"advanced":{"mqtt":{"host":"wb.local","port":1884}}}"#.utf8).write(to: config)
 
     let settings = try Settings.load(arguments: ["--config", config.path])

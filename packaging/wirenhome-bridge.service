@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/wb-homekit
+ExecStart=/usr/bin/wirenhome-bridge
 Restart=always
 RestartSec=5
 

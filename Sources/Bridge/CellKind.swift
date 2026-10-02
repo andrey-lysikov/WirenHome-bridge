@@ -73,13 +73,6 @@ enum CellKind: Sendable, Equatable {
             return .number
         }
     }
-
-    var isWritable: Bool {
-        switch self {
-        case .toggle, .pushbutton, .range, .rgb, .setpoint: true
-        default: false
-        }
-    }
 }
 
 // iOS accepts names of letters, digits, spaces and apostrophes that start and end with a letter or digit.

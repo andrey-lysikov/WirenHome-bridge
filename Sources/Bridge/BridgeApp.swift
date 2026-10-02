@@ -11,9 +11,6 @@ import HAPKit
 import WBKit
 
 public actor BridgeApp {
-    // The device page of versions before 0.3; its retained topics are cleared on sight.
-    static let legacyDevicePrefix = "/devices/wb-homekit/"
-
     private let publisher: any MQTTPublisher
     private let source: any WebUIConfigSource
     private let store: StateStore
@@ -69,7 +66,7 @@ public actor BridgeApp {
         self.configPath = configPath
     }
 
-    public var currentState: BridgeState { state }
+    var currentState: BridgeState { state }
 
     func attach(_ homeKit: any HomeKitControl, paired: Bool, bridge: HAPAccessory) {
         self.homeKit = homeKit
@@ -96,11 +93,7 @@ public actor BridgeApp {
         case .disconnected:
             connected = false
         case .message(let message):
-            if message.topic.hasPrefix(Self.legacyDevicePrefix) {
-                if message.retain, !message.payload.isEmpty {
-                    await publisher.publish(MQTTMessage(topic: message.topic, payload: "", retain: true))
-                }
-            } else if let change = registry.apply(message) {
+            if let change = registry.apply(message) {
                 await registryChanged(change)
             }
         }
@@ -163,7 +156,7 @@ public actor BridgeApp {
         if let dashboards = file.dashboards {
             apply(dashboards)
         } else if let config {
-            // First run after an upgrade: the choices made on the old device page move into the file.
+            // A new or reset file (e.g. after a firmware reflash) gets the choices kept in state.json.
             file.dashboards = SettingsFile.dashboards(from: state, config: config)
             rewrite = true
         }
@@ -456,8 +449,6 @@ public actor BridgeApp {
             } else {
                 await valuesChanged([cell], except: nil)
             }
-        case .device:
-            break
         }
     }
 

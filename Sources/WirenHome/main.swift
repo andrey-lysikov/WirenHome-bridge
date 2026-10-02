@@ -19,7 +19,7 @@ if arguments == ["--version"] {
 let runner: BridgeRunner
 do {
     let settings = try Settings.load(arguments: arguments)
-    Log.info("wb-homekit \(AppVersion.current), MQTT \(settings.mqtt.host):\(settings.mqtt.port), data \(settings.dataDirectory)")
+    Log.info("wirenhome-bridge \(AppVersion.current), MQTT \(settings.mqtt.host):\(settings.mqtt.port), data \(settings.dataDirectory)")
     runner = try BridgeRunner(settings: settings, version: AppVersion.current)
 } catch {
     Log.error("\(error)")

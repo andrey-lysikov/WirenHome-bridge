@@ -5,6 +5,6 @@ set -e
 
 if [ "$1" = "configure" ]; then
     systemctl daemon-reload
-    systemctl enable wb-homekit.service
-    systemctl restart wb-homekit.service
+    systemctl enable wirenhome-bridge.service
+    systemctl restart wirenhome-bridge.service
 fi

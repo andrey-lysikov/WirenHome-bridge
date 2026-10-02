@@ -162,7 +162,7 @@ jobs:
           # Keep the five newest packages so the Pages site stays small.
           ls -1 pool/main/*.deb | sort -V | head -n -5 | xargs -r rm -f
           # Stable download link outside pool, so the index does not list it twice.
-          cp ../dist/*.deb wb-homekit_latest_arm64.deb
+          cp ../dist/*.deb wirenhome-bridge_latest_arm64.deb
 
           apt-ftparchive packages pool > dists/stable/main/binary-arm64/Packages
           gzip -9 -kf dists/stable/main/binary-arm64/Packages
@@ -177,13 +177,13 @@ jobs:
           mv ../Release dists/stable/Release
           gpg --batch --yes --default-key "$KEY" --clearsign -o dists/stable/InRelease dists/stable/Release
           gpg --batch --yes --default-key "$KEY" -abs -o dists/stable/Release.gpg dists/stable/Release
-          cp ../source/packaging/wb-homekit.gpg wb-homekit.gpg
+          cp ../source/packaging/wirenhome-bridge.gpg wirenhome-bridge.gpg
           touch .nojekyll
 
           git add -A
           if ! git diff --cached --quiet; then
             git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
-              commit -q -m "wb-homekit ${{ needs.check.outputs.version }}"
+              commit -q -m "wirenhome-bridge ${{ needs.check.outputs.version }}"
             git push -q origin gh-pages
           fi
 
