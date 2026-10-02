@@ -92,10 +92,12 @@ public struct Settings: Sendable, Equatable {
         } catch {
             throw SettingsError.unreadableConfig(path, "\(error)")
         }
-        if let host = file.mqtt?.host, !host.isEmpty { mqtt.host = host }
-        if let port = file.mqtt?.port { mqtt.port = port }
-        if let user = file.mqtt?.username, !user.isEmpty { mqtt.username = user }
-        if let password = file.mqtt?.password, !password.isEmpty { mqtt.password = password }
+        // The settings page keeps the broker under "advanced"; version 0.2 had it at the top level.
+        let broker = file.advanced?.mqtt ?? file.mqtt
+        if let host = broker?.host, !host.isEmpty { mqtt.host = host }
+        if let port = broker?.port { mqtt.port = port }
+        if let user = broker?.username, !user.isEmpty { mqtt.username = user }
+        if let password = broker?.password, !password.isEmpty { mqtt.password = password }
     }
 
     private struct ConfigFile: Decodable {
@@ -106,6 +108,11 @@ public struct Settings: Sendable, Equatable {
             let password: String?
         }
 
+        struct Advanced: Decodable {
+            let mqtt: MQTT?
+        }
+
         let mqtt: MQTT?
+        let advanced: Advanced?
     }
 }

@@ -63,18 +63,59 @@ struct SettingsFile: Equatable, Codable {
     var dashboards: [String: Dashboard]?
     var resetPairing = false
 
-    enum CodingKeys: String, CodingKey {
-        case mqtt, dashboards
-        case resetPairing = "reset_pairing"
+    // The form's sections: "pairing", one "panel_<id>" per dashboard, "advanced" with the broker.
+    static let panelPrefix = "panel_"
+
+    struct Key: CodingKey {
+        let stringValue: String
+        var intValue: Int? { nil }
+        init(_ string: String) { stringValue = string }
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { nil }
+    }
+
+    struct Pairing: Codable {
+        var reset = false
+
+        init(reset: Bool = false) {
+            self.reset = reset
+        }
+
+        init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            reset = (try? c.decodeIfPresent(Bool.self, forKey: .reset)) ?? false
+        }
+    }
+
+    struct Advanced: Codable {
+        var mqtt: MQTT?
     }
 
     init() {}
 
     init(from decoder: any Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        mqtt = (try? c.decodeIfPresent(MQTT.self, forKey: .mqtt)) ?? MQTT()
-        dashboards = try? c.decodeIfPresent([String: Dashboard].self, forKey: .dashboards)
-        resetPairing = (try? c.decodeIfPresent(Bool.self, forKey: .resetPairing)) ?? false
+        let c = try decoder.container(keyedBy: Key.self)
+        let pairing = try? c.decodeIfPresent(Pairing.self, forKey: Key("pairing"))
+        resetPairing = pairing?.reset ?? false
+        // Version 0.2 kept the broker at the top level.
+        let advanced = try? c.decodeIfPresent(Advanced.self, forKey: Key("advanced"))
+        let legacy = try? c.decodeIfPresent(MQTT.self, forKey: Key("mqtt"))
+        mqtt = advanced?.mqtt ?? legacy ?? MQTT()
+        var panels: [String: Dashboard] = [:]
+        for key in c.allKeys where key.stringValue.hasPrefix(Self.panelPrefix) {
+            panels[String(key.stringValue.dropFirst(Self.panelPrefix.count))] = (try? c.decode(Dashboard.self, forKey: key)) ?? Dashboard()
+        }
+        // The pairing section is always written by the bridge, so it marks a file that already has the choices.
+        dashboards = pairing == nil && panels.isEmpty ? nil : panels
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: Key.self)
+        try c.encode(Pairing(reset: resetPairing), forKey: Key("pairing"))
+        for (id, dashboard) in dashboards ?? [:] {
+            try c.encode(dashboard, forKey: Key(Self.panelPrefix + id))
+        }
+        try c.encode(Advanced(mqtt: mqtt), forKey: Key("advanced"))
     }
 
     func encoded() -> Data {
@@ -125,10 +166,11 @@ enum SettingsSchema {
         var en: [String: String] = [:]
         var ru: [String: String] = [
             "Apple HomeKit bridge": "Мост Apple HomeKit",
-            "Dashboards": "Панели",
+            "Pairing": "Сопряжение",
+            "Reset pairing": "Сбросить сопряжение",
             "Publish to Apple Home": "Публиковать в Apple Home",
             "Widget roles": "Роли виджетов",
-            "Reset pairing": "Сбросить сопряжение",
+            "Advanced": "Дополнительно",
             "MQTT broker": "MQTT-брокер",
             "Host": "Адрес",
             "Port": "Порт",
@@ -140,14 +182,40 @@ enum SettingsSchema {
         }
 
         let html = infoHTML(info)
-        en["wb-homekit-info"] = html["en"]
-        ru["wb-homekit-info"] = html["ru"]
-        en["reset-description"] = "On save: forget every paired iPhone and issue a new code and QR"
-        ru["reset-description"] = "При сохранении: забыть все сопряжённые iPhone и выдать новый код и QR"
+        en["pairing-info"] = html["en"]
+        ru["pairing-info"] = html["ru"]
+        en["reset-description"] = "Tick and press Save: every paired iPhone is forgotten, a new code and QR code appear"
+        ru["reset-description"] = "Отметьте и нажмите «Сохранить»: все сопряжённые iPhone будут забыты, появятся новый код и QR-код"
         en["username-description"] = "Leave empty when the broker does not require authentication"
         ru["username-description"] = "Оставьте пустым, если брокер не требует авторизации"
 
-        var dashboards: [String: JSON] = [:]
+        var properties: [String: JSON] = [
+            "pairing": [
+                "type": "object", "title": "Pairing", "description": "pairing-info", "propertyOrder": 1, "options": plain,
+                "properties": [
+                    "reset": [
+                        "type": "boolean", "format": "checkbox", "title": "Reset pairing", "description": "reset-description",
+                        "default": false, "propertyOrder": 1
+                    ]
+                ]
+            ],
+            "advanced": [
+                "type": "object", "title": "Advanced", "propertyOrder": 100_000, "options": plain,
+                "properties": [
+                    "mqtt": [
+                        "type": "object", "title": "MQTT broker", "propertyOrder": 1, "options": plain,
+                        "properties": [
+                            "host": ["type": "string", "title": "Host", "default": "localhost", "propertyOrder": 1],
+                            "port": ["type": "integer", "title": "Port", "default": 1883, "minimum": 1, "maximum": 65535, "propertyOrder": 2],
+                            "username": ["type": "string", "title": "Username", "description": "username-description", "default": "", "propertyOrder": 3],
+                            "password": ["type": "string", "title": "Password", "format": "password", "default": "", "propertyOrder": 4]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+
+        // Each dashboard is a section of its own, in the web UI order, between pairing and advanced.
         for (index, (dashboard, widgets)) in (config.map(owners) ?? []).enumerated() {
             var roleFields: [String: JSON] = [:]
             for (order, widget) in widgets.enumerated() {
@@ -168,15 +236,15 @@ enum SettingsSchema {
                 }
                 roleFields[widget.id] = .object(field)
             }
-            var properties: [String: JSON] = [
+            var fields: [String: JSON] = [
                 "enabled": ["type": "boolean", "format": "checkbox", "title": "Publish to Apple Home", "default": false, "propertyOrder": 1]
             ]
             if !roleFields.isEmpty {
-                properties["roles"] = ["type": "object", "title": "Widget roles", "propertyOrder": 2, "options": plain, "properties": .object(roleFields)]
+                fields["roles"] = ["type": "object", "title": "Widget roles", "propertyOrder": 2, "options": plain, "properties": .object(roleFields)]
             }
-            dashboards[dashboard.id] = [
-                "type": "object", "title": .string(dashboard.name), "propertyOrder": .int(index + 1),
-                "options": plain, "properties": .object(properties)
+            properties[SettingsFile.panelPrefix + dashboard.id] = [
+                "type": "object", "title": .string(dashboard.name), "propertyOrder": .int(index + 10),
+                "options": plain, "properties": .object(fields)
             ]
         }
 
@@ -184,25 +252,9 @@ enum SettingsSchema {
             "$schema": "http://json-schema.org/draft-04/schema#",
             "type": "object",
             "title": "Apple HomeKit bridge",
-            "description": "wb-homekit-info",
             "configFile": ["path": .string(configPath), "validate": false],
             "options": plain,
-            "properties": [
-                "dashboards": ["type": "object", "title": "Dashboards", "propertyOrder": 1, "options": plain, "properties": .object(dashboards)],
-                "reset_pairing": [
-                    "type": "boolean", "format": "checkbox", "title": "Reset pairing", "description": "reset-description",
-                    "default": false, "propertyOrder": 2
-                ],
-                "mqtt": [
-                    "type": "object", "title": "MQTT broker", "propertyOrder": 3, "options": plain,
-                    "properties": [
-                        "host": ["type": "string", "title": "Host", "default": "localhost", "propertyOrder": 1],
-                        "port": ["type": "integer", "title": "Port", "default": 1883, "minimum": 1, "maximum": 65535, "propertyOrder": 2],
-                        "username": ["type": "string", "title": "Username", "description": "username-description", "default": "", "propertyOrder": 3],
-                        "password": ["type": "string", "title": "Password", "format": "password", "default": "", "propertyOrder": 4]
-                    ]
-                ]
-            ],
+            "properties": .object(properties),
             "translations": ["en": .object(en.mapValues { .string($0) }), "ru": .object(ru.mapValues { .string($0) })]
         ]
         let encoder = JSONEncoder()

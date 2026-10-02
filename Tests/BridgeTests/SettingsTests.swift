@@ -35,3 +35,16 @@ import Testing
         try Settings.load(arguments: ["--config", "/nonexistent.conf"])
     }
 }
+
+@Test func readsTheBrokerFromTheAdvancedSection() throws {
+    let directory = temporaryDirectory()
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let config = directory.appendingPathComponent("wb-homekit.conf")
+    try Data(#"{"pairing":{"reset":false},"advanced":{"mqtt":{"host":"wb.local","port":1884}}}"#.utf8).write(to: config)
+
+    let settings = try Settings.load(arguments: ["--config", config.path])
+    #expect(settings.mqtt.host == "wb.local")
+    #expect(settings.mqtt.port == 1884)
+    #expect(settings.configPath == config.path)
+}

@@ -70,6 +70,8 @@ public final class ServiceAdvertiser: @unchecked Sendable {
 
     // Fails early with an install hint when the library is absent.
     public init() throws {
+        // Avahi's Bonjour layer prints a warning on every call unless told not to; we use it on purpose.
+        setenv("AVAHI_COMPAT_NOWARN", "1", 0)
         guard let handle = dlopen(Self.library, RTLD_NOW) else {
             throw DiscoveryError.libraryMissing(Self.library)
         }
