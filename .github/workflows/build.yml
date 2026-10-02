@@ -16,7 +16,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-26.04-arm
-    container: swift:6.4-bookworm
+    container: swift:6.4.0-bookworm
 
     outputs:
       artifact: wb-homekit-${{ github.sha }}
@@ -25,7 +25,15 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install packaging tools
-        run: apt-get update && apt-get install -y --no-install-recommends dpkg-dev
+        run: apt-get update && apt-get install -y --no-install-recommends dpkg-dev zstd
+
+      # Dependencies (two BoringSSL copies) dominate the build; reuse them between runs.
+      - name: Cache the build directory
+        uses: actions/cache@v5
+        with:
+          path: .build
+          key: build-swift-6.4.0-bookworm-arm64-${{ hashFiles('Package.resolved', 'Package.swift') }}
+          restore-keys: build-swift-6.4.0-bookworm-arm64-
 
       - name: Run the tests
         shell: bash
@@ -38,13 +46,14 @@ jobs:
             exit 1
           }
 
+      # Swift Build in 6.4.0 drops Foundation's static deps (swiftlang/swift-build#1764, fixed in 6.4.2).
       - name: Build the binary
-        run: swift build -c release --static-swift-stdlib
+        run: swift build -c release --build-system native --static-swift-stdlib
 
       - name: Build the package
         run: |
           VERSION="$(packaging/version.sh)"
-          BINARY="$(swift build -c release --static-swift-stdlib --show-bin-path)/wb-homekit"
+          BINARY="$(swift build -c release --build-system native --static-swift-stdlib --show-bin-path)/wb-homekit"
           if [ "${{ inputs.strip }}" = "true" ]; then
             strip --strip-unneeded "$BINARY"
           fi
