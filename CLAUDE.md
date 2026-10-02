@@ -8,7 +8,7 @@
 - Mac для разработки: macOS 26+, Apple Silicon.
 - Swift Package Manager, исполняемый таргет `wb-homekit`.
 - Разработка и запуск: Xcode на macOS (открыть `Package.swift`, Cmd+R). Проект всегда должен собираться и запускаться в Xcode.
-- Продакшн: только штатная прошивка Wiren Board (Debian), arm64, работа внутри контроллера.
+- Продакшн: только штатная прошивка Wiren Board на Debian 13 Trixie и новее, arm64, работа внутри контроллера. Debian 11 (glibc 2.31, libstdc++ 10) не поддерживается.
 
 ## Кросс-платформенность (обязательно)
 
@@ -84,7 +84,7 @@
 - Версия — две цифры (`0.1`), единственный источник `Sources/WirenHome/Version.swift`; читает `packaging/version.sh`.
 - Пакет собирает `packaging/build-deb.sh`; `Depends` на libc считает `dpkg-shlibdeps`. В пакете: `/etc/wb-homekit.conf` (conffile), схема confed `/usr/share/wb-mqtt-confed/schemas/wb-homekit.schema.json`, источник apt и ключ `packaging/wb-homekit.gpg` (без ключа пакет собирается, но без обновлений).
 - `release.yml` кладёт `.deb` в `gh-pages` (`pool/main`, `dists/stable`, последние 5 версий) и подписывает `InRelease`/`Release.gpg` ключом из `APT_SIGNING_KEY` (без пароля).
-- Linux arm64: glibc-сборка с `--build-system native --static-swift-stdlib` (Swift Build в 6.4.0 теряет статические зависимости Foundation, swiftlang/swift-build#1764; флаг убрать после перехода на 6.4.2) в Debian 12 Bookworm (glibc вперёд-совместима); musl не подходит из-за `dlopen`.
+- Linux arm64: glibc-сборка с `--build-system native --static-swift-stdlib` (Swift Build в 6.4.0 теряет статические зависимости Foundation, swiftlang/swift-build#1764; флаг убрать после перехода на 6.4.2) в Debian 12 Bookworm (glibc вперёд-совместима, пакет требует glibc ≥ 2.35 и libstdc++ gcc 11+, работает на Debian 13); musl не подходит из-за `dlopen`.
 - Поставка: `.deb` с `/usr/bin/wb-homekit` и службой systemd `wb-homekit.service` (`After=mosquitto.service`, `Restart=always`); `Depends:` на `libavahi-compat-libdnssd1` и `libc6` по факту сборки.
 - Логи на контроллере: `journalctl -u wb-homekit -f`.
 - Обновления — свой apt-репозиторий на GitHub Pages (ветка `gh-pages`), индексы подписаны GPG (секрет `APT_SIGNING_KEY`); `release.yml` публикует туда `.deb`.
