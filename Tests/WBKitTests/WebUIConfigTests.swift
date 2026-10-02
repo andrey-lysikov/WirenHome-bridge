@@ -30,3 +30,42 @@ let sampleWebUI = #"""
     #expect(cell.control == "control")
     #expect(WebUIConfig.Cell(id: "broken", name: "x").control == "")
 }
+
+@Test func flattensWidgetColumns() throws {
+    let json = #"{"dashboards":[{"id":"d","name":"Дом","widgets":[["w1","w2"],["w3","w1"]]}],"widgets":[]}"#
+    let config = try JSONDecoder().decode(WebUIConfig.self, from: Data(json.utf8))
+    #expect(config.dashboards[0].widgets == ["w1", "w2", "w3"])
+}
+
+@Test func prefersTheAPIAndFallsBackToTheFile() async throws {
+    let file = FileManager.default.temporaryDirectory.appendingPathComponent("webui-\(UUID().uuidString).conf")
+    try Data(sampleWebUI.utf8).write(to: file)
+    defer { try? FileManager.default.removeItem(at: file) }
+    let api = #"{"dashboards":[{"id":"api","name":"API","widgets":[]}],"widgets":[]}"#
+    let replies = Replies([(200, api), (401, "<html>login</html>"), (200, #"{"error":"busy"}"#), (200, api)])
+
+    let source = WebUIDashboardsSource(file: file.path) { await replies.next() }
+    #expect(try await source.load().dashboards.map(\.id) == ["api"])
+    // A login page and an error object both fall back to the file instead of "no dashboards".
+    #expect(try await source.load().dashboards.map(\.id) == ["dashboard1", "svg1"])
+    #expect(try await source.load().dashboards.map(\.id) == ["dashboard1", "svg1"])
+    #expect(try await source.load().dashboards.map(\.id) == ["api"])
+}
+
+@Test func reportsTheAPIErrorWithoutAFile() async {
+    let source = WebUIDashboardsSource(file: "/nonexistent/wb-webui.conf") { (403, []) }
+    await #expect(throws: WebUISourceError.status(403)) { try await source.load() }
+}
+
+actor Replies {
+    private var queue: [(Int, String)]
+
+    init(_ queue: [(Int, String)]) {
+        self.queue = queue
+    }
+
+    func next() -> (status: Int, body: [UInt8]) {
+        let (status, body) = queue.removeFirst()
+        return (status, Array(body.utf8))
+    }
+}

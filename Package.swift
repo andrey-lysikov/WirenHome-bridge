@@ -25,6 +25,7 @@ let package = Package(
                 "Common",
                 .product(name: "MQTTNIO", package: "mqtt-nio"),
                 .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOHTTP1", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio")
             ]
         ),
@@ -40,7 +41,10 @@ let package = Package(
         .target(name: "Discovery", dependencies: ["Common"]),
         .target(name: "Bridge", dependencies: ["Common", "WBKit", "HAPKit", "Discovery"]),
         .executableTarget(name: "WirenHome", dependencies: ["Bridge", "Common"]),
-        .testTarget(name: "WBKitTests", dependencies: ["WBKit"]),
+        .testTarget(
+            name: "WBKitTests",
+            dependencies: ["WBKit", .product(name: "NIOCore", package: "swift-nio"), .product(name: "NIOPosix", package: "swift-nio")]
+        ),
         .testTarget(name: "HAPKitTests", dependencies: ["HAPKit", .product(name: "Crypto", package: "swift-crypto")]),
         .testTarget(name: "DiscoveryTests", dependencies: ["Discovery"]),
         .testTarget(name: "BridgeTests", dependencies: ["Bridge", "WBKit", "HAPKit"]),

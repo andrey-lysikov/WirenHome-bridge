@@ -1,7 +1,14 @@
 //  Copyright © AndreyLysikov
 //  SPDX-License-Identifier: Apache-2.0
 
-// Dashboards and widgets from /etc/wb-webui.conf.
+import Common
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
+
+// Dashboards and widgets of the WB web UI (GET /api/dashboards, stored in /etc/wb-webui.conf).
 public struct WebUIConfig: Sendable, Equatable, Decodable {
     public struct Dashboard: Sendable, Equatable, Decodable {
         public let id: String
@@ -22,7 +29,11 @@ public struct WebUIConfig: Sendable, Equatable, Decodable {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             id = try c.decode(String.self, forKey: .id)
             name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? ""
-            widgets = (try? c.decodeIfPresent([String].self, forKey: .widgets)) ?? []
+            // A flat list, or columns of widgets in newer web UIs; repeats are dropped as the UI does.
+            let flat = (try? c.decodeIfPresent([String].self, forKey: .widgets))
+                ?? (try? c.decodeIfPresent([[String]].self, forKey: .widgets))?.flatMap { $0 } ?? []
+            var seen = Set<String>()
+            widgets = flat.filter { seen.insert($0).inserted }
         }
     }
 
@@ -106,19 +117,62 @@ public protocol WebUIConfigSource: Sendable {
     func load() async throws -> WebUIConfig
 }
 
-// Reads the config through wb-mqtt-confed, which works both locally and over the network.
-public struct ConfedWebUISource: WebUIConfigSource {
-    private let rpc: RPCClient
+// Asks the web UI backend first; reads the file when HTTP fails, e.g. once a login is required.
+public actor WebUIDashboardsSource: WebUIConfigSource {
+    public typealias Fetch = @Sendable () async throws -> (status: Int, body: [UInt8])
+    private let fetch: Fetch
+    private let file: String
+    private var usingFile = false
 
-    public init(rpc: RPCClient) {
-        self.rpc = rpc
+    public init(host: String, port: Int = 80, file: String = "/etc/wb-webui.conf") {
+        self.init(file: file) { try await HTTPClient.get(host: host, port: port, path: "/api/dashboards") }
+    }
+
+    init(file: String, fetch: @escaping Fetch) {
+        self.file = file
+        self.fetch = fetch
     }
 
     public func load() async throws -> WebUIConfig {
-        try await rpc.call("confed/Editor/Load", params: ["path": "/etc/wb-webui.conf"], as: LoadResult.self).content
+        do {
+            let config = try await loadHTTP()
+            if usingFile {
+                usingFile = false
+                Log.info("Dashboards are read from the web UI API again")
+            }
+            return config
+        } catch {
+            guard FileManager.default.fileExists(atPath: file) else { throw error }
+            let config = try Self.decode(Data(contentsOf: URL(fileURLWithPath: file)))
+            if !usingFile {
+                usingFile = true
+                Log.warning("Web UI API unavailable (\(error)), reading dashboards from \(file)")
+            }
+            return config
+        }
     }
 
-    private struct LoadResult: Decodable {
-        let content: WebUIConfig
+    private func loadHTTP() async throws -> WebUIConfig {
+        let (status, body) = try await fetch()
+        guard status == 200 else { throw WebUISourceError.status(status) }
+        return try Self.decode(Data(body))
     }
+
+    // Requires the dashboards list, so an error object never reads as "no dashboards".
+    static func decode(_ data: Data) throws -> WebUIConfig {
+        _ = try JSONDecoder().decode(Shape.self, from: data)
+        return try JSONDecoder().decode(WebUIConfig.self, from: data)
+    }
+
+    private struct Shape: Decodable {
+        let dashboards: [Anything]
+    }
+
+    private struct Anything: Decodable {
+        init(from decoder: any Decoder) throws {}
+    }
+}
+
+public enum WebUISourceError: Error, Equatable {
+    case status(Int)
 }

@@ -18,7 +18,7 @@
 - Минимум сторонних библиотек. Любую новую зависимость согласовывать явно, указав, для какой функции она нужна.
 - Согласованные зависимости:
   - `apple/swift-crypto` — Ed25519, X25519, ChaCha20-Poly1305, HKDF/SHA-512 (HAP).
-  - `swift-server-community/mqtt-nio` 2.x — MQTT-клиент; его SwiftNIO (`NIOCore`, `NIOPosix`, подключён напрямую) используется и для TCP/HTTP-сервера HAP.
+  - `swift-server-community/mqtt-nio` 2.x — MQTT-клиент; его SwiftNIO (`NIOCore`, `NIOPosix`, `NIOHTTP1`, подключён напрямую) используется и для TCP/HTTP-сервера HAP, и для HTTP-клиента панелей.
 - SRP-6a (Pair-Setup: 3072, g=5, SHA-512, `g` в M1 без паддинга) и `BigUInt` — своя реализация, обязательно с тестовыми векторами HAP.
 - В коде моста только `FoundationEssentials` на Linux (`#if canImport(FoundationEssentials)`, на macOS — Foundation): без `Process`, `FileHandle`, `NSLock`, `String(format:)`, `components(separatedBy:)`, `trimmingCharacters`, `replacingOccurrences`. Замены — `Common` (`Subprocess` на `posix_spawn`, `trimmed`, `percentDecoded`, `hex`), `Mutex` из `Synchronization`, запись лога через `write(2)`. Тесты могут импортировать полную Foundation.
 - JSON — `Codable`. TLV8 — своя реализация с фрагментацией (>255 байт).
@@ -42,7 +42,7 @@
 
 - Все мета-топики публикуются с `retain: true`.
 - Устройства и контролы — из `/devices/+/controls/+` и JSON в `.../meta` (`type`, `readonly`, `units`, `max`, `title`, `error`). Комнат в MQTT нет.
-- Панели (рабочие столы) — из `/etc/wb-webui.conf` через MQTT RPC `/rpc/v1/confed/Editor/Load` (`{"path":"/etc/wb-webui.conf"}`), опрос с проверкой хеша.
+- Панели (рабочие столы) — `GET http://<хост MQTT>/api/dashboards` (бэкенд веб-интерфейса за nginx; в MQTT и confed их нет); при ошибке HTTP (например, нужен вход) — чтение `/etc/wb-webui.conf`. Ответ без массива `dashboards` — ошибка, не пустой список. `widgets` панели — список или колонки (`[[…]]`). Опрос раз в 10 с, правки применяются, когда два опроса совпали.
 - Выбор панелей для HomeKit — переключатели `dashboard_<id>` в устройстве `wb-homekit`; выбор хранится в файле состояния.
 - Виджет панели = один HAP-аксессуар, ячейка `device/control` = сервис. Дубли ячеек, несуществующие устройства, виджеты и ячейки с пустым именем пропускаются.
 - Имена: аксессуар — имя виджета, сервис — имя ячейки; автоматически приводятся к правилам iOS (буквы, цифры, пробел, `-`, `'`; `₂` → `2`).
@@ -65,7 +65,7 @@
 - Состояние устройств и моста — в `actor`; типы между акторами — `Sendable`.
 - Без глобального изменяемого состояния, без `@unchecked Sendable` без крайней необходимости.
 - Слои: MQTT-клиент → модель Wiren Board (устройства, панели) → маппинг в HAP-аксессуары → HAP-сервер.
-- Модули: `Common` (лог), `WBKit` (MQTT, топики/meta WB, реестр устройств, RPC, `wb-webui.conf`, виртуальное устройство), `HAPKit` (TLV8, `BigUInt`, SRP, шифрование сессии, HTTP, `HAPController` — логика HAP без сети, `HAPServer` — TCP на NIO), `Discovery` (mDNS через `dns_sd`), `Bridge` (настройки, состояние, плагин, аксессуары, `BridgeApp`/`BridgeRunner`), `WirenHome` (точка входа).
+- Модули: `Common` (лог), `WBKit` (MQTT, топики/meta WB, реестр устройств, HTTP-клиент и источник панелей, виртуальное устройство), `HAPKit` (TLV8, `BigUInt`, SRP, шифрование сессии, HTTP, `HAPController` — логика HAP без сети, `HAPServer` — TCP на NIO), `Discovery` (mDNS через `dns_sd`), `Bridge` (настройки, состояние, плагин, аксессуары, `BridgeApp`/`BridgeRunner`), `WirenHome` (точка входа).
 - Файлы в каталоге данных: `state.json` (PIN, панели, роли), `homekit.json` (id моста, Ed25519-ключ, сопряжения, `c#`); оба `0600`.
 - SRP как в fast-srp-hap (homebridge): `B` и `S` дополняются до 384 байт, `g` в M1 без дополнения, `A` берётся как пришёл; эталонные значения в `Tests/HAPKitTests/SRPVectors.swift`.
 - Имя моста в HomeKit и mDNS: `WirenHome XXXX` (хвост id), производитель `WirenHome`. Мост слушает случайный порт, порт объявляется через mDNS.

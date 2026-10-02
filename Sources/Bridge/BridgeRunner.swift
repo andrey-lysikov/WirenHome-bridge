@@ -11,10 +11,9 @@ import Foundation
 import HAPKit
 import WBKit
 
-// Wires MQTT, RPC and the bridge together and drives them.
+// Wires MQTT, the web UI and the bridge together and drives them.
 public final class BridgeRunner: Sendable {
     private let connection: MQTTConnection
-    private let rpc: RPCClient
     private let app: BridgeApp
     private let homeKit: HomeKitService
     private let bridge: HAPAccessory
@@ -37,11 +36,12 @@ public final class BridgeRunner: Sendable {
         connection = MQTTConnection(
             settings: settings.mqtt,
             clientID: Self.clientID,
-            subscriptions: ["/devices/#", RPCClient.replyFilter(for: Self.clientID)],
+            subscriptions: ["/devices/#"],
             will: PluginModel.stoppedMessage
         )
-        rpc = RPCClient(publisher: connection, clientID: Self.clientID)
-        app = BridgeApp(publisher: connection, source: ConfedWebUISource(rpc: rpc), store: store, state: state, version: version)
+        // The web UI lives on the same host as the broker: localhost on the controller, its IP from Xcode.
+        let dashboards = WebUIDashboardsSource(host: settings.mqtt.host)
+        app = BridgeApp(publisher: connection, source: dashboards, store: store, state: state, version: version)
 
         let storage = FileHAPStorage(url: store.directory.appendingPathComponent("homekit.json"))
         // Created here so the bridge name is known before the controller starts.
@@ -82,12 +82,6 @@ public final class BridgeRunner: Sendable {
             }
             group.addTask {
                 for await event in self.connection.events {
-                    if case .message(let message) = event, await self.rpc.handle(message) {
-                        continue
-                    }
-                    if event == .disconnected {
-                        await self.rpc.failAll()
-                    }
                     await self.app.handle(event)
                 }
             }
