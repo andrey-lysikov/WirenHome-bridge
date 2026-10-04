@@ -14,3 +14,19 @@ SHA512: aedb2351a79f3e3b56ddff4030fc88688d6795456f27a5b011321183a3c4b712e7735967
 Description: Wiren Board to Apple Home bridge
  Publishes Wiren Board dashboards as HomeKit accessories.
 
+Package: wirenhome-bridge
+Architecture: arm64
+Version: 0.2
+Priority: optional
+Section: misc
+Maintainer: Andrey Lysikov
+Depends: libc6 (>= 2.35), libgcc-s1 (>= 3.3), libstdc++6 (>= 11), libavahi-compat-libdnssd1, avahi-daemon, qrencode
+Filename: pool/main/wirenhome-bridge_0.2_arm64.deb
+Size: 5162200
+MD5sum: c101ff2f77ee85124107dc64930f6b69
+SHA1: 36a810f59a80cbffcc0f16c423225d61b8acd728
+SHA256: 982b4d33f1617b658897a99a3744aee5801e3e60ea08982e524c1155896e1cbf
+SHA512: 889eec4d851a639dc4f86a91e8dd213bbc5acd6b636fcd3f0d4a0c77accac54f7829ecb2d91b06eca55981ca1aa85f2bb6aa001b45012d5be40fe9949ff6022b
+Description: Wiren Board to Apple Home bridge
+ Publishes Wiren Board dashboards as HomeKit accessories.
+
