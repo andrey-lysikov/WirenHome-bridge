@@ -59,7 +59,22 @@ let controllerMessages: [(String, String)] = [
     ("/devices/GateControlling/controls/isClosed/meta", #"{"type":"switch","readonly":true}"#),
     ("/devices/GateControlling/controls/isClosed", "1"),
     ("/devices/GateControlling/controls/Alarm/meta", #"{"type":"alarm","readonly":true}"#),
-    ("/devices/GateControlling/controls/Alarm", "0")
+    ("/devices/GateControlling/controls/Alarm", "0"),
+    // WB-MWAC v2 water leak controller.
+    ("/devices/wb-mwac-v2_148/controls/Input F1/meta", #"{"order":3,"readonly":true,"type":"switch"}"#),
+    ("/devices/wb-mwac-v2_148/controls/Input F1", "0"),
+    ("/devices/wb-mwac-v2_148/controls/Input F1 Counter/meta", #"{"order":4,"readonly":true,"type":"value"}"#),
+    ("/devices/wb-mwac-v2_148/controls/Input F1 Counter", "0"),
+    ("/devices/wb-mwac-v2_148/controls/Output K1/meta", #"{"order":15,"readonly":false,"type":"switch"}"#),
+    ("/devices/wb-mwac-v2_148/controls/Output K1", "1"),
+    ("/devices/wb-mwac-v2_148/controls/Output K2/meta", #"{"order":16,"readonly":false,"type":"switch"}"#),
+    ("/devices/wb-mwac-v2_148/controls/Output K2", "1"),
+    ("/devices/wb-mwac-v2_148/controls/Leakage Mode/meta", #"{"order":17,"readonly":true,"type":"switch"}"#),
+    ("/devices/wb-mwac-v2_148/controls/Leakage Mode", "1"),
+    ("/devices/wb-mwac-v2_148/controls/Leakage Mode Reset/meta", #"{"order":18,"readonly":false,"type":"pushbutton"}"#),
+    ("/devices/wb-mwac-v2_148/controls/Leakage Mode Reset", "0"),
+    ("/devices/wb-mwac-v2_148/controls/Cleaning Mode/meta", #"{"order":19,"readonly":false,"type":"switch"}"#),
+    ("/devices/wb-mwac-v2_148/controls/Cleaning Mode", "0")
 ]
 
 func controllerRegistry() -> DeviceRegistry {
@@ -315,4 +330,38 @@ let gateWidget = widget("gate", "Ворота", [
     let (mapping, _) = map([sensorsOnly], roles: ["gate": .gate])
     #expect(mapping.issues == [WidgetIssue(widget: "gate", issue: .roleMismatch(.gate, .needsGateControl))])
     #expect(mapping.issues[0].issue.title["ru"] == "Ворота: нужна кнопка или выключатель, показан как «Авто»")
+}
+
+let leakWidget = widget("aquastop", "Аквастоп", [
+    ("wb-mwac-v2_148/Cleaning Mode", "Влажная уборка"),
+    ("wb-mwac-v2_148/Output K1", "Кран ХВС"), ("wb-mwac-v2_148/Output K2", "Кран ГВС"),
+    ("wb-mwac-v2_148/Input F1", "Протечка в ванной"), ("wb-mwac-v2_148/Input F1 Counter", "Счётчик"),
+    ("wb-mwac-v2_148/Leakage Mode", "Протечка"), ("wb-mwac-v2_148/Leakage Mode Reset", "Сброс")
+])
+
+@Test func leakControlRoleBuildsValvesAndSensors() throws {
+    typealias S = HAPType.Service
+    typealias C = HAPType.Characteristic
+    let (mapping, _) = map([leakWidget], roles: ["aquastop": .leakControl])
+    #expect(mapping.issues.isEmpty)
+    let accessory = mapping.accessories[1]
+    #expect(serviceTypes(accessory) == [S.valve, S.valve, S.switch, S.leakSensor, S.leakSensor, S.switch])
+    #expect(value(mapping, accessory.aid, C.active) == .int(1))
+    let leaks = accessory.services.filter { $0.type == S.leakSensor }.compactMap { $0.characteristics.first { $0.type == C.leakDetected } }
+    let registry = controllerRegistry()
+    let states = leaks.compactMap { try? mapping.sources[HAPCharacteristicID(aid: accessory.aid, iid: $0.iid)]?.read { registry.control(device: $0.device, control: $0.control) }.get() }
+    #expect(states == [.int(0), .int(1)])
+    let close = try #require(mapping.sources[HAPCharacteristicID(aid: accessory.aid, iid: accessory.services[1].characteristics.first { $0.type == C.active }!.iid)])
+    #expect(try close.commands(for: .int(0), { registry.control(device: $0.device, control: $0.control) }).get().map(\.0.control) == ["Output K1"])
+}
+
+@Test func leakControlNeedsSensorAndSwitch() {
+    let valvesOnly = widget("aquastop", "Аквастоп", [("wb-mwac-v2_148/Output K1", "Кран")])
+    let (mapping, _) = map([valvesOnly], roles: ["aquastop": .leakControl])
+    #expect(mapping.issues == [WidgetIssue(widget: "aquastop", issue: .roleMismatch(.leakControl, .needsInputAndSwitch))])
+}
+
+@Test func recognizesRelayOutputs() {
+    #expect(["K1", "K12", "Output K2"].allSatisfy(AccessoryMapper.isRelay))
+    #expect(!["Cleaning Mode", "Buzzer", "K", "Output", "Kitchen", "OnOff1"].contains(where: AccessoryMapper.isRelay))
 }

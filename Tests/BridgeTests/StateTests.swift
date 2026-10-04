@@ -43,7 +43,7 @@ func rejectsInvalidPinCode(code: String) {
 }
 
 @Test func roleCodesAreStable() {
-    #expect(AccessoryRole.allCases.map(\.code) == Array(0...11))
+    #expect(AccessoryRole.allCases.map(\.code) == Array(0...12))
     for role in AccessoryRole.allCases {
         #expect(AccessoryRole(code: role.code) == role)
     }

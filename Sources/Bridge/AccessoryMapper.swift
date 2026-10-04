@@ -141,6 +141,12 @@ struct AccessoryMapper {
         }
     }
 
+    // WB relay outputs are named "K1" or "Output K1".
+    static func isRelay(_ control: String) -> Bool {
+        let digits = (control.hasPrefix("Output ") ? control.dropFirst(7) : Substring(control)).dropFirst()
+        return control.hasSuffix("K\(digits)") && !digits.isEmpty && digits.allSatisfy { $0.isASCII && $0.isNumber }
+    }
+
     static func information(name: String, model: String, serial: String, version: String) -> HAPService {
         typealias C = HAPType.Characteristic
         return HAPService(iid: 1, type: HAPType.Service.accessoryInformation, characteristics: [
@@ -328,17 +334,31 @@ private struct Builder {
 
         case .valve:
             guard let toggle = toggles.first else { return .needsSwitch }
-            service(S.valve, slot: slot, name: name, [
-                Spec(type: C.active, format: .uint8, permissions: .readWriteEvents, source: .active(toggle), min: 0, max: 1, step: 1),
-                Spec(type: C.inUse, format: .uint8, permissions: .readEvents, source: .active(toggle), min: 0, max: 1, step: 1),
-                Spec(type: C.valveType, format: .uint8, permissions: .readEvents, source: .constant(.int(0)), min: 0, max: 3, step: 1)
-            ])
+            service(S.valve, slot: slot, name: name, valve(toggle))
 
         case .leak:
             guard let input = sensor ?? toggles.first else { return .needsInput }
-            service(S.leakSensor, slot: slot, name: name, [
-                Spec(type: C.leakDetected, format: .uint8, permissions: .readEvents, source: .threshold(input, above: 0, asBool: false), min: 0, max: 1, step: 1)
-            ])
+            service(S.leakSensor, slot: slot, name: name, [leak(input)])
+
+        // A water leak kit such as WB-MWAC: switches are valves, inputs and alarms are leak sensors.
+        case .leakControl:
+            let sensors = cells.filter { [.state, .alarm].contains($0.kind) }
+            guard !sensors.isEmpty, !toggles.isEmpty else { return .needsInputAndSwitch }
+            // Relay outputs drive valves and come first, so a valve is the primary service.
+            let relays = toggles.filter { AccessoryMapper.isRelay($0.control) }
+            let valves = Set(relays.isEmpty ? toggles : relays)
+            for item in cells where valves.contains(item.cell) {
+                service(S.valve, slot: item.cell.id, name: item.name, valve(item.cell))
+            }
+            for item in cells where item.kind == .toggle && !valves.contains(item.cell) {
+                service(S.switch, slot: item.cell.id, name: item.name, [Spec(type: C.on, format: .bool, permissions: .readWriteEvents, source: .onOff(item.cell))])
+            }
+            for item in sensors {
+                service(S.leakSensor, slot: item.cell.id, name: item.name, [leak(item.cell)])
+            }
+            for item in cells where item.kind == .pushbutton {
+                service(S.switch, slot: item.cell.id, name: item.name, [Spec(type: C.on, format: .bool, permissions: .readWriteEvents, source: .momentary(item.cell))])
+            }
 
         case .motion:
             guard let input = sensor ?? first({ $0 == .number }) else { return .needsInputOrValue }
@@ -392,6 +412,18 @@ private struct Builder {
 
     func temperature(_ cell: Cell) -> Spec {
         Spec(type: C.currentTemperature, format: .float, permissions: .readEvents, source: .number(cell, min: -100, max: 200), unit: "celsius", min: -100, max: 200, step: 0.1)
+    }
+
+    func valve(_ cell: Cell) -> [Spec] {
+        [
+            Spec(type: C.active, format: .uint8, permissions: .readWriteEvents, source: .active(cell), min: 0, max: 1, step: 1),
+            Spec(type: C.inUse, format: .uint8, permissions: .readEvents, source: .active(cell), min: 0, max: 1, step: 1),
+            Spec(type: C.valveType, format: .uint8, permissions: .readEvents, source: .constant(.int(0)), min: 0, max: 3, step: 1)
+        ]
+    }
+
+    func leak(_ cell: Cell) -> Spec {
+        Spec(type: C.leakDetected, format: .uint8, permissions: .readEvents, source: .threshold(cell, above: 0, asBool: false), min: 0, max: 1, step: 1)
     }
 
     func contact(_ cell: Cell) -> Spec {

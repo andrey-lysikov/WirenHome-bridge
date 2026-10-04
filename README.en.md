@@ -11,7 +11,7 @@ Apple Home bridge for Wiren Board controllers.
 
 - Lives inside the Wiren Board web UI: **Settings** → **Configuration files** → **Apple HomeKit bridge**
 - You choose which dashboards go to Apple Home; every widget becomes one accessory
-- Widget roles: Auto, Light, Outlet, Fan, Thermostat, Blinds, Valve, Leak, Motion, Contact, Gate and Info (read-only)
+- Widget roles: Auto, Light, Outlet, Fan, Thermostat, Blinds, Valve, Leak, Motion, Contact, Gate, Leak control and Info (read-only)
 - Save data in /mnt/data/wirenhome-bridge
 
 *WARNING: the bridge is not certified by Apple, so the Home app asks you to confirm adding an uncertified accessory.*
@@ -55,10 +55,11 @@ Changes in dashboards are picked up automatically within about half a minute aft
 | Valve | switch | valve |
 | Leak / Motion / Contact | input or value | sensor |
 | Gate | "open" and "close" buttons (one button is an impulse input) or a switch; optional "open" and "closed" end sensors and an alarm | gate: open/close, opening/closing |
+| Leak control | valve relays (`K1`, `Output K1`) and sensor inputs (or an alarm), optional reset button and other switches | valves, leak sensors, a button and switches |
 | Info | anything | sensors only, nothing can be switched |
 
 Advanced settings are in /etc/wirenhome-bridge.conf.
 
 ## Tech
 
-Written in Swift 6, Linux arm64 builds the `.deb` package and releases are made by GitHub Actions.
+Written in Swift 6, Linux arm64 builds the `.deb` package.

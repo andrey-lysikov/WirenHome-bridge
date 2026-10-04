@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2
+
+* New widget role Leak control for water leak kits such as WB-MWAC
+* Bugfix
+
 ## 0.1
 
 * First release of wirenhome-bridge: Wiren Board dashboards in Apple Home, running on the controller
